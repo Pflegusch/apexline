@@ -1,0 +1,37 @@
+name: Bug report
+description: Something does not work as expected
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What did you do, what did you expect, what happened instead?
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Apexline version
+      description: Output of `apexline --version`
+    validations:
+      required: true
+  - type: input
+    id: system
+    attributes:
+      label: System
+      description: Operating system of the computer running Apexline, and the device showing the dashboard
+      placeholder: e.g. Linux (Raspberry Pi 5), iPhone 15 Pro / Safari
+    validations:
+      required: true
+  - type: textarea
+    id: log
+    attributes:
+      label: Console output
+      description: The lines Apexline printed around the problem
+      render: text
+  - type: textarea
+    id: data
+    attributes:
+      label: Data
+      description: For coach or measurement problems, attach the session folder or lap file (zipped) or say where to find it

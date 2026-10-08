@@ -1,0 +1,29 @@
+[package]
+name = "apexline"
+version = "0.1.0"
+edition = "2021"
+description = "Telemetry dashboard and driving coach for Gran Turismo 7 (PS5)"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/Pflegusch/apexline"
+keywords = ["telemetry", "dashboard", "sim-racing", "coach"]
+categories = ["command-line-utilities", "games"]
+
+[dependencies]
+axum = { version = "0.8", features = ["ws"] }
+chrono = { version = "0.4.45", default-features = false, features = ["clock"] }
+clap = { version = "4", features = ["derive"] }
+directories = "6"
+if-addrs = "0.15"
+salsa20 = "0.10"
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "time", "sync"] }
+toml = "1"
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[profile.release]
+opt-level = 3
+lto = true
+strip = true

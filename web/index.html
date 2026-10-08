@@ -1,0 +1,1543 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Apexline">
+<meta name="theme-color" content="#000000">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon.png">
+<title>Apexline</title>
+<style>
+  :root {
+    --bg: #000;
+    --panel: #0b0b0d;
+    --line: #1c1c21;
+    --label: #6b6b75;
+    --text: #d9d9de;
+    --dim: #8a8a94;
+    --green: #2fd36b;
+    --yellow: #f2c230;
+    --orange: #ff8a2a;
+    --red: #ff4a3d;
+    --blue: #3d8bff;
+    --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, monospace;
+    --shift-x: 0px;
+    --shift-y: 0px;
+    --brightness: 1;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    height: 100%; background: var(--bg); color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", system-ui, sans-serif;
+    overflow: hidden; -webkit-user-select: none; user-select: none;
+    -webkit-tap-highlight-color: transparent; touch-action: manipulation;
+  }
+  body {
+    padding: max(8px, env(safe-area-inset-top)) max(10px, env(safe-area-inset-right))
+             max(6px, env(safe-area-inset-bottom)) max(10px, env(safe-area-inset-left));
+  }
+  .num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+  .label { font-size: 10px; letter-spacing: .12em; text-transform: uppercase; color: var(--label); }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 8px 12px; min-height: 0; min-width: 0; overflow: hidden; }
+  .row { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; white-space: nowrap; }
+  .delta-pos { color: var(--red); } .delta-neg { color: var(--green); }
+
+  /* Pages; burn-in protection: everything drifts slightly */
+  #pages {
+    height: 100%; position: relative;
+    transform: translate(var(--shift-x), var(--shift-y));
+    transition: transform 3s ease-in-out, opacity 1.2s ease;
+    filter: brightness(var(--brightness));
+  }
+  .page { position: absolute; inset: 0; transition: opacity .25s, transform .25s; }
+  .page[hidden] { display: block; visibility: hidden; opacity: 0; pointer-events: none; }
+  #p1[hidden] { transform: translateX(-24px); }
+  #p2[hidden], #p3[hidden], #p4[hidden] { transform: translateX(24px); }
+  .dots { display: flex; gap: 5px; align-items: center; }
+  .dots i { width: 6px; height: 6px; border-radius: 50%; background: var(--line); }
+  .dots i.on { background: var(--dim); }
+
+  /* ---------- Page 1: driving ---------- */
+  #p1 {
+    display: grid; gap: 8px;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-rows: 22px minmax(0, 1fr) 30px;
+    grid-template-areas: "rpm rpm rpm rpm" "tires center map info" "strip strip strip strip";
+  }
+
+  #rpm { grid-area: rpm; display: flex; gap: 3px; }
+  #rpm i { flex: 1; border-radius: 3px; background: var(--line); transition: background .05s; }
+  #rpm i.on-g { background: var(--green); }
+  #rpm i.on-y { background: var(--yellow); }
+  #rpm i.on-r { background: var(--red); }
+  #rpm.flash i { background: var(--blue) !important; animation: flash .12s steps(1) infinite alternate; }
+  @keyframes flash { to { opacity: .15; } }
+
+  #tires { grid-area: tires; display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; gap: 8px; }
+  .tire {
+    border-radius: 14px; border: 2px solid var(--c, var(--line));
+    background: color-mix(in srgb, var(--c, transparent) 16%, var(--panel));
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    position: relative; min-height: 0; min-width: 0; overflow: hidden; container-type: size;
+    transition: border-color .4s, background .4s;
+  }
+  .tire .t { font-size: min(46px, 38cqw, 40cqh); font-weight: 600; color: var(--c, var(--dim)); line-height: 1; white-space: nowrap; }
+  .tire .t small { font-size: .45em; font-weight: 400; color: var(--dim); }
+  .tire .pos { position: absolute; top: 6px; left: 8px; }
+  .tire .peak { position: absolute; top: 5px; right: 7px; font-size: min(10px, 9cqw); color: var(--label); }
+  .tire .slip {
+    position: absolute; bottom: 5px; font-size: 9px; font-weight: 700; letter-spacing: .08em;
+    padding: 1px 5px; border-radius: 5px; opacity: 0; transition: opacity .1s;
+  }
+  .tire .slip.lock { opacity: 1; background: var(--red); color: #000; }
+  .tire .slip.spin { opacity: 1; background: var(--yellow); color: #000; }
+
+  #center { grid-area: center; display: grid; grid-template-columns: 12px 1fr 12px; gap: 8px; min-height: 0; }
+  .pedal { background: var(--line); border-radius: 6px; position: relative; overflow: hidden; }
+  .pedal b { position: absolute; left: 0; right: 0; bottom: 0; height: 0%; border-radius: 6px; }
+  #brake b { background: var(--red); }
+  #thr b { background: var(--green); }
+  #core { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 0; min-width: 0;
+    position: relative; overflow: hidden; container-type: size; }
+  #gear { font-size: min(160px, 50cqh, 150cqw); font-weight: 700; line-height: .9; color: #f0f0f3; }
+  #gear.limit { color: var(--red); }
+  #sugg { position: absolute; top: 2px; right: 0; font-size: 13px; color: var(--yellow); }
+  #speed { font-size: min(52px, 17cqh, 45cqw); font-weight: 500; line-height: 1; margin-top: 2px; }
+  #rpmnum { margin-top: 4px; font-size: min(12px, 5cqh); color: var(--dim); white-space: nowrap; }
+
+  #mapcol { grid-area: map; display: flex; flex-direction: column; gap: 8px; min-height: 0; }
+  #mapcard { flex: 1; position: relative; padding: 0; overflow: hidden; }
+  #map { position: absolute; inset: 0; width: 100%; height: 100%; }
+  #mapcard .label { position: absolute; top: 7px; left: 10px; }
+  #maphint[hidden] { display: none; }
+  #maphint { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; text-align: center; padding: 12px; font-size: 12px; color: var(--label); }
+  #balcard { flex: 0 0 auto; padding: 7px 10px 6px; }
+  #balcard .row { align-items: center; }
+  .bal-ends span { font-size: 9px; letter-spacing: .1em; text-transform: uppercase; color: var(--label); }
+  .bal-track { position: relative; height: 14px; margin: 5px 0 3px; border-radius: 7px; overflow: hidden;
+    background: linear-gradient(90deg, color-mix(in srgb, var(--blue) 35%, var(--panel)), var(--line) 38%, var(--line) 62%, color-mix(in srgb, var(--orange) 35%, var(--panel))); }
+  .bal-track::after { content: ""; position: absolute; left: 50%; top: 2px; bottom: 2px; width: 1px; background: var(--label); }
+  #balMark { position: absolute; top: 1px; bottom: 1px; width: 12px; margin-left: -6px; left: 50%; border-radius: 6px; background: var(--dim); transition: left .08s linear; }
+  #balText { font-size: 13px; font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+
+  #info { grid-area: info; display: flex; flex-direction: column; gap: 8px; min-height: 0; }
+  #lapcard { flex: 1.35 1 0; display: flex; flex-direction: column; justify-content: space-between; container-type: inline-size; }
+  #laptime { font-size: min(32px, 19cqw, 7vh); font-weight: 600; white-space: nowrap; }
+  #livedelta { font-size: min(28px, 15cqw, 6vh); font-weight: 700; }
+  #lapnum { font-size: min(14px, 8cqw); color: var(--dim); }
+  .kv .num { font-size: min(14px, 8.5cqw); }
+  #fuelcard { flex: 1 1 0; display: flex; flex-direction: column; justify-content: space-between; container-type: inline-size; }
+  #fuelcard .row > .num { font-size: min(15px, 9cqw); }
+  #fuelbar { height: 6px; background: var(--line); border-radius: 3px; overflow: hidden; margin: 3px 0; }
+  #fuelbar b { display: block; height: 100%; width: 0; background: var(--dim); border-radius: 3px; transition: width .5s; }
+  #fuelcard #fuellaps { font-size: min(24px, 12cqw, 5vh); font-weight: 600; }
+
+  #strip { grid-area: strip; display: flex; align-items: center; gap: 14px; font-size: 13px; color: var(--dim); overflow: hidden; white-space: nowrap; }
+  #strip .num { color: var(--text); }
+  .pill { padding: 2px 7px; border-radius: 6px; font-size: 11px; font-weight: 700; letter-spacing: .08em; border: 1px solid var(--line); color: var(--label); }
+  .pill.on { background: var(--yellow); color: #000; border-color: var(--yellow); }
+  #strip > * { flex-shrink: 0; }
+  #strip > #carname { flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .conn { margin-left: auto; display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+  .conn i { width: 7px; height: 7px; border-radius: 50%; background: var(--red); }
+  .conn.live i { background: var(--green); }
+  .rec { color: var(--red); font-size: 11px; font-weight: 700; letter-spacing: .08em; }
+
+  /* ---------- Page 2: all data ---------- */
+  #p2, #p4 { display: flex; flex-direction: column; gap: 8px; }
+  #p2head, #p4head { display: flex; align-items: center; gap: 12px; height: 22px; flex-shrink: 0; font-size: 13px; color: var(--dim); white-space: nowrap; }
+  #p2head b, #p4head b { color: var(--text); font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  #p2head > :not(b), #p3head > :not(b):not(#coachUpdated), #p4head > :not(b):not(#perfCar) { flex-shrink: 0; }
+  #p2body, #p4body { flex: 1; overflow-y: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch; min-height: 0;
+    display: grid; gap: 8px; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); grid-auto-rows: max-content; align-content: start; padding-bottom: 8px; }
+  #p2body .card, #p4body .card { min-height: auto; }
+  #p2body .card h2, #p4body .card h2 { font-size: 10px; letter-spacing: .12em; text-transform: uppercase; color: var(--label); font-weight: 600; margin-bottom: 6px; }
+  .kvs { display: grid; grid-template-columns: auto 1fr; gap: 3px 12px; font-size: 13px; }
+  .kvs span:nth-child(odd) { color: var(--dim); }
+  .kvs span:nth-child(even) { font-family: var(--mono); font-variant-numeric: tabular-nums; text-align: right; }
+  table.wheels { width: 100%; border-collapse: collapse; font-size: 13px; }
+  table.wheels th { font-size: 10px; color: var(--label); font-weight: 600; text-align: right; padding: 2px 0 4px; }
+  table.wheels th:first-child, table.wheels td:first-child { text-align: left; color: var(--dim); font-family: inherit; }
+  table.wheels td { text-align: right; font-family: var(--mono); font-variant-numeric: tabular-nums; padding: 2px 0; }
+  .gcanvas { width: 100%; aspect-ratio: 1; max-height: 210px; display: block; margin: 0 auto; }
+  .bars { display: grid; gap: 5px; font-size: 12px; }
+  .bar { display: grid; grid-template-columns: 70px 1fr 54px; gap: 8px; align-items: center; }
+  .bar span:first-child { color: var(--dim); }
+  .bar span:last-child { font-family: var(--mono); text-align: right; }
+  .bar i { height: 8px; background: var(--line); border-radius: 4px; overflow: hidden; display: block; }
+  .bar i b { display: block; height: 100%; width: 0; border-radius: 4px; background: var(--dim); }
+  .flags { display: flex; flex-wrap: wrap; gap: 5px; }
+  .flags .pill.on { background: var(--green); border-color: var(--green); }
+  #steerwheel { width: 64px; height: 64px; border: 5px solid var(--dim); border-radius: 50%; position: relative; margin: 2px auto 8px; }
+  #steerwheel::after { content: ""; position: absolute; left: 50%; top: -5px; width: 4px; margin-left: -2px; height: 14px; background: var(--yellow); border-radius: 2px; }
+  #laplist { font-size: 13px; display: grid; grid-template-columns: auto 1fr auto; gap: 3px 12px; }
+  #laplist span:nth-child(3n+2), #laplist span:nth-child(3n) { font-family: var(--mono); text-align: right; }
+
+  /* ---------- Page 3: coach ---------- */
+  #p3 { display: flex; flex-direction: column; gap: 8px; }
+  #p3head { display: flex; align-items: center; gap: 12px; height: 22px; flex-shrink: 0; font-size: 13px; color: var(--dim); white-space: nowrap; }
+  #p3head b { color: var(--text); font-weight: 600; }
+  #p3body { flex: 1; overflow-y: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch; min-height: 0;
+    display: flex; flex-direction: column; gap: 8px; padding-bottom: 8px; }
+  #p3body > *, #feed > * { flex-shrink: 0; }
+  #feed { display: flex; flex-direction: column; gap: 8px; }
+  #feed:empty::before { content: attr(data-empty); color: var(--label); font-size: 14px; padding: 8px 2px; }
+  #focus { border-color: color-mix(in srgb, var(--yellow) 45%, var(--line)); padding: 10px 14px; }
+  #focus h2 { font-size: 10px; letter-spacing: .12em; text-transform: uppercase; color: var(--yellow); font-weight: 600; margin-bottom: 4px; }
+  #focusText { font-size: clamp(17px, 5.2vh, 22px); line-height: 1.3; font-weight: 600; }
+  .fb { border-left: 4px solid var(--label); padding: 9px 12px; }
+  .fb.good { border-left-color: var(--green); }
+  .fb.tip { border-left-color: var(--yellow); }
+  .fb.warn { border-left-color: var(--orange); }
+  .fb .row { margin-bottom: 4px; align-items: flex-start; }
+  .fb h3 { font-size: 15px; font-weight: 600; white-space: normal; }
+  .fb .when { font-size: 11px; color: var(--label); flex-shrink: 0; }
+  .fb p { font-size: 14px; line-height: 1.4; color: var(--text); }
+  .fb ul { margin: 6px 0 0 18px; font-size: 14px; line-height: 1.4; color: var(--text); }
+  .fb li + li { margin-top: 3px; }
+  .fb .stats { display: flex; flex-wrap: wrap; gap: 4px 16px; margin-top: 6px; font-size: 12px; color: var(--dim); }
+  .fb .stats b { font-family: var(--mono); font-weight: 500; color: var(--text); }
+  .coachpill { padding: 2px 7px; border-radius: 6px; font-size: 11px; font-weight: 700; letter-spacing: .08em;
+    background: var(--yellow); color: #000; flex-shrink: 0; animation: pulse 1.6s ease-in-out infinite alternate; }
+  .coachpill[hidden] { display: none; }
+  @keyframes pulse { from { opacity: 1; } to { opacity: .55; } }
+
+  /* ---------- Page 4: measurements ---------- */
+  #perfCar { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  #p4body .card h2 { display: flex; justify-content: space-between; gap: 8px; }
+  #p4body .card h2 span { color: var(--dim); font-weight: 500; letter-spacing: .04em; text-transform: none; }
+  #p4body .card h2 b { font-weight: inherit; }
+  #shiftTable tr:first-child td { font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: var(--label); }
+  #shiftTable .warn { color: var(--orange); }
+  #perfLive { container-type: inline-size; }
+  #perfLive .row { align-items: center; }
+  .pstate { padding: 2px 7px; border-radius: 6px; font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase;
+    border: 1px solid var(--line); color: var(--label); }
+  .pstate.ready { background: var(--green); border-color: var(--green); color: #000; }
+  .pstate.run { background: var(--yellow); border-color: var(--yellow); color: #000; }
+  .pstate.brake { background: var(--red); border-color: var(--red); color: #000; }
+  #perfSpeed { font-size: 15px; color: var(--dim); }
+  #perfBig { font-size: min(54px, 20cqw); font-weight: 600; line-height: 1.1; margin-top: 6px; }
+  #perfSub { font-size: 13px; color: var(--dim); min-height: 1.3em; }
+  .marks { display: grid; grid-template-columns: auto auto auto 1fr; gap: 3px 10px; font-size: 13px; margin-top: 10px; align-items: baseline; }
+  .marks:empty { display: none; }
+  .marks .h { grid-column: 1 / -1; font-size: 10px; letter-spacing: .12em; text-transform: uppercase; color: var(--label); margin-top: 2px; }
+  .marks .k { color: var(--dim); white-space: nowrap; }
+  .marks .v { font-family: var(--mono); font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
+  .marks .x { font-family: var(--mono); font-variant-numeric: tabular-nums; color: var(--dim); font-size: 12px; text-align: right; white-space: nowrap; }
+  .marks .dl { font-family: var(--mono); font-size: 12px; text-align: right; white-space: nowrap; color: var(--dim); }
+  .marks .dl.best { color: var(--text); }
+  .marks .dl.delta-pos { color: var(--red); } .marks .dl.delta-neg { color: var(--green); }
+  .marks .dl.warn { font-family: inherit; color: var(--label); }
+  .phint { font-size: 12px; color: var(--label); line-height: 1.4; margin-top: 10px; }
+  .pchart { width: 100%; height: 170px; display: block; touch-action: pan-y; }
+  .pchart.small { height: 120px; }
+  .pchart[hidden] { display: none; }
+  .legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12px; color: var(--dim); margin-top: 4px; }
+  .legend i { display: inline-block; width: 14px; height: 2px; border-radius: 1px; vertical-align: middle; margin-right: 5px; }
+  .legend i.dash { background: repeating-linear-gradient(90deg, currentColor 0 5px, transparent 5px 9px) !important; }
+  .readout { font-family: var(--mono); font-size: 12px; color: var(--text); min-height: 1.4em; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .peaks { display: flex; flex-direction: column; gap: 2px; font-size: 13px; color: var(--dim); margin-top: 4px; }
+  .peaks b { font-family: var(--mono); font-weight: 500; color: var(--text); }
+  .pempty { font-size: 13px; color: var(--label); padding: 8px 0; }
+  .pempty[hidden] { display: none; }
+  table.ptable { width: 100%; border-collapse: collapse; font-size: 13px; }
+  table.ptable td { padding: 3px 0; white-space: nowrap; }
+  table.ptable td:first-child { color: var(--dim); }
+  table.ptable td.v { font-family: var(--mono); font-variant-numeric: tabular-nums; text-align: right; }
+  table.ptable td.x { font-family: var(--mono); font-variant-numeric: tabular-nums; text-align: right; color: var(--dim); font-size: 12px; padding-left: 10px; }
+  table.ptable td.w { text-align: right; color: var(--label); font-size: 11px; padding-left: 10px; }
+  table.ptable tr.sep td { padding-top: 9px; }
+  .runlist { display: flex; flex-direction: column; font-size: 13px; }
+  .runlist > div { padding: 5px 0; border-top: 1px solid var(--line); line-height: 1.35; }
+  .runlist > div:first-child { border-top: 0; }
+  .runlist .when { color: var(--label); font-size: 11px; }
+  .runlist b { font-family: var(--mono); font-weight: 500; }
+
+  /* Portrait */
+  @media (orientation: portrait) {
+    /* iOS 26 web apps blur a band below the status bar: start the content below it */
+    body { padding-top: calc(max(8px, env(safe-area-inset-top)) + 24px); }
+    #p1 {
+      grid-template-columns: 1fr 1fr;
+      grid-template-rows: 18px minmax(0, 1.1fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) auto;
+      grid-template-areas: "rpm rpm" "center center" "tires tires" "map map" "info info" "strip strip";
+    }
+    #mapcol { flex-direction: row; }
+    #mapcard { flex: 1.4 1 0; }
+    #balcard { flex: 1 1 0; display: flex; flex-direction: column; justify-content: center; }
+    #info { flex-direction: row; }
+    #strip { flex-wrap: wrap; gap: 6px 14px; height: auto; }
+    #laptime { font-size: min(32px, 19cqw); }
+    #livedelta { font-size: min(28px, 15cqw); }
+    #fuelcard #fuellaps { font-size: min(24px, 12cqw); }
+    #p2body, #p4body { grid-template-columns: 1fr; }
+  }
+
+  /* Start overlay & settings */
+  .overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,.88); display: flex; align-items: center; justify-content: center;
+    padding: 24px; z-index: 10;
+  }
+  .overlay[hidden] { display: none; }
+  .sheet { background: #111114; border: 1px solid #26262c; border-radius: 18px; padding: 20px 22px; max-width: 460px; width: 100%; max-height: 100%; overflow: auto; }
+  .sheet h1 { font-size: 20px; margin-bottom: 6px; }
+  .sheet p { color: var(--dim); font-size: 14px; line-height: 1.4; margin-bottom: 14px; }
+  .sheet label { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 9px 0; border-top: 1px solid #1d1d22; font-size: 15px; }
+  .sheet input[type=number] { width: 72px; background: #1c1c21; color: var(--text); border: 1px solid #2c2c33; border-radius: 8px; padding: 6px 8px; font: inherit; text-align: right; }
+  .sheet input[type=text] { width: 150px; background: #1c1c21; color: var(--text); border: 1px solid #2c2c33; border-radius: 8px; padding: 6px 8px;
+    font: inherit; text-align: right; -webkit-user-select: text; user-select: text; }
+  .sheet input[type=range] { width: 150px; }
+  .sheet h2.sect { font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--label); margin: 18px 0 2px; }
+  .sheet p.tag { color: var(--label); font-size: 13px; margin: -2px 0 10px; }
+  .sinfo { font-size: 12px; color: var(--label); line-height: 1.4; margin: -4px 0 6px; word-break: break-all; white-space: pre-line; }
+  .serr { font-size: 13px; color: var(--red); margin-top: 8px; }
+  .serr[hidden] { display: none; }
+  /* No data from the PS5: hint at the bottom, a tap hides it */
+  #nolink { position: fixed; left: 50%; bottom: max(10px, env(safe-area-inset-bottom)); transform: translateX(-50%);
+    width: min(560px, calc(100% - 32px)); z-index: 5; background: #111114; border: 1px solid color-mix(in srgb, var(--yellow) 45%, #26262c);
+    border-radius: 14px; padding: 9px 14px; font-size: 13px; line-height: 1.4; color: var(--dim); display: flex; flex-direction: column; gap: 2px; }
+  #nolink[hidden] { display: none; }
+  #nolink b { color: var(--text); font-weight: 600; }
+  #nolink .st { color: var(--yellow); font-family: var(--mono); font-size: 12px; }
+  .sheet select { background: #1c1c21; color: var(--text); border: 1px solid #2c2c33; border-radius: 8px; padding: 6px 8px; font: inherit; }
+  .sheet input[type=checkbox] { width: 22px; height: 22px; accent-color: var(--green); }
+  button.big { margin-top: 14px; width: 100%; padding: 14px; border-radius: 12px; border: 0; background: var(--green); color: #000; font: 600 17px -apple-system, system-ui, sans-serif; }
+  button.ghost { background: #1c1c21; color: var(--text); }
+  #wakeinfo { font-size: 12px; color: var(--label); margin-top: 10px; }
+  #keepawake { position: fixed; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+</style>
+</head>
+<body>
+
+<div id="pages">
+<!-- ======================= Page 1: driving ======================= -->
+<section class="page" id="p1">
+  <div id="rpm"></div>
+
+  <div id="tires">
+    <div class="tire" id="t0"><span class="label pos" data-t>VL</span><span class="peak num"></span><span class="t num">--</span><span class="slip"></span></div>
+    <div class="tire" id="t1"><span class="label pos" data-t>VR</span><span class="peak num"></span><span class="t num">--</span><span class="slip"></span></div>
+    <div class="tire" id="t2"><span class="label pos" data-t>HL</span><span class="peak num"></span><span class="t num">--</span><span class="slip"></span></div>
+    <div class="tire" id="t3"><span class="label pos" data-t>HR</span><span class="peak num"></span><span class="t num">--</span><span class="slip"></span></div>
+  </div>
+
+  <div id="center">
+    <div class="pedal" id="brake"><b></b></div>
+    <div id="core">
+      <span id="sugg" class="num"></span>
+      <div id="gear" class="num">N</div>
+      <div id="speed" class="num">0</div>
+      <div class="label" data-u="speed">km/h</div>
+      <div id="rpmnum" class="num">0</div>
+    </div>
+    <div class="pedal" id="thr"><b></b></div>
+  </div>
+
+  <div id="mapcol">
+    <div class="card" id="mapcard">
+      <canvas id="map"></canvas>
+      <span class="label" data-t>Strecke</span>
+      <div id="maphint" data-t>Karte entsteht beim Fahren</div>
+    </div>
+    <div class="card" id="balcard">
+      <div class="row"><span class="label" data-t>Balance</span><span id="balText">–</span></div>
+      <div class="bal-track"><b id="balMark"></b></div>
+      <div class="row bal-ends"><span data-t>unter</span><span data-t>über</span></div>
+    </div>
+  </div>
+
+  <div id="info">
+    <div class="card" id="lapcard">
+      <div class="row"><span class="label" data-t>Runde</span><span id="lapnum" class="num">–</span></div>
+      <div id="laptime" class="num">–:––.–––</div>
+      <div class="row"><span class="label" data-t>Δ Live</span><span id="livedelta" class="num">–</span></div>
+      <div class="row kv"><span class="label" data-t>Letzte</span><span id="last" class="num">–</span></div>
+      <div class="row kv"><span class="label" data-t>Beste</span><span id="best" class="num">–</span></div>
+    </div>
+    <div class="card" id="fuelcard">
+      <div class="row"><span class="label" data-t>Sprit</span><span id="fuel" class="num">–</span></div>
+      <div id="fuelbar"><b></b></div>
+      <div class="row"><span class="label" data-t>Ø/Runde</span><span id="fpl" class="num">–</span></div>
+      <div class="row"><span class="label" data-t>Reicht für</span><span id="fuellaps" class="num">–</span></div>
+    </div>
+  </div>
+
+  <div id="strip">
+    <span><span data-t>Wasser</span> <span id="water" class="num">–</span>°</span>
+    <span><span data-t>Öl</span> <span id="oil" class="num">–</span>°</span>
+    <span id="boostwrap" hidden><span data-t>Ladedruck</span> <span id="boost" class="num">–</span> <span data-u="press">bar</span></span>
+    <span id="poswrap" hidden>Pos <span id="pos" class="num">–</span></span>
+    <span class="pill" id="tcs">TCS</span>
+    <span class="pill" id="asm">ASM</span>
+    <span id="carname"></span>
+    <span class="coachpill" hidden>COACH ●</span>
+    <span class="conn"><span class="rec" hidden>● REC</span><i></i><span class="connText">offline</span></span>
+    <span class="dots"><i class="on"></i><i></i><i></i><i></i></span>
+  </div>
+</section>
+
+<!-- ======================= Page 2: all data ======================= -->
+<section class="page" id="p2" hidden>
+  <div id="p2head">
+    <b id="carname2">–</b>
+    <span class="coachpill" hidden>COACH ●</span>
+    <span class="conn"><span class="rec" hidden>● REC</span><i></i><span class="connText">offline</span></span>
+    <span class="dots"><i></i><i class="on"></i><i></i><i></i></span>
+  </div>
+  <div id="p2body">
+    <div class="card"><h2 data-t>G-Kräfte</h2>
+      <canvas class="gcanvas" id="gmeter"></canvas>
+      <div class="kvs">
+        <span data-t>Quer</span><span id="d_glat">–</span>
+        <span data-t>Längs</span><span id="d_glong">–</span>
+        <span data-t>Vertikal</span><span id="d_gvert">–</span>
+        <span data-t>Max. quer / Bremsen</span><span id="d_gmax">–</span>
+      </div>
+    </div>
+
+    <div class="card"><h2 data-t>Lenkung &amp; Balance</h2>
+      <div id="steerwheel"></div>
+      <div class="kvs">
+        <span data-t>Lenkwinkel</span><span id="d_steer">–</span>
+        <span data-t>Gierrate</span><span id="d_yaw">–</span>
+        <span data-t>Schwimmwinkel</span><span id="d_beta">–</span>
+        <span data-t>Schräglauf vorne</span><span id="d_sf">–</span>
+        <span data-t>Schräglauf hinten</span><span id="d_sr">–</span>
+        <span data-t>Balance (+ unter / − über)</span><span id="d_bal">–</span>
+        <span data-t>Quergeschwindigkeit (+ links)</span><span id="d_vlat">–</span>
+        <span data-t>Lenkübersetzung (gelernt)</span><span id="d_ratio">–</span>
+      </div>
+    </div>
+
+    <div class="card"><h2 data-t>Räder</h2>
+      <table class="wheels">
+        <thead><tr><th></th><th data-t>VL</th><th data-t>VR</th><th data-t>HL</th><th data-t>HR</th></tr></thead>
+        <tbody>
+          <tr><td><span data-t>Temp.</span> <span data-u="temp">°C</span></td><td id="w_t0"></td><td id="w_t1"></td><td id="w_t2"></td><td id="w_t3"></td></tr>
+          <tr><td data-u="speed">km/h</td><td id="w_v0"></td><td id="w_v1"></td><td id="w_v2"></td><td id="w_v3"></td></tr>
+          <tr><td data-t>Schlupf %</td><td id="w_s0"></td><td id="w_s1"></td><td id="w_s2"></td><td id="w_s3"></td></tr>
+          <tr><td><span data-t>Federweg</span> <span data-u="travel">mm</span></td><td id="w_h0"></td><td id="w_h1"></td><td id="w_h2"></td><td id="w_h3"></td></tr>
+          <tr><td>Radius <span data-u="radius">cm</span></td><td id="w_r0"></td><td id="w_r1"></td><td id="w_r2"></td><td id="w_r3"></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="card"><h2 data-t>Pedale &amp; Antrieb</h2>
+      <div class="bars">
+        <div class="bar"><span data-t>Gas</span><i><b id="b_thr" style="background:var(--green)"></b></i><span id="v_thr">–</span></div>
+        <div class="bar"><span data-t>Bremse</span><i><b id="b_brk" style="background:var(--red)"></b></i><span id="v_brk">–</span></div>
+        <div class="bar"><span data-t>Kupplung</span><i><b id="b_clu"></b></i><span id="v_clu">–</span></div>
+        <div class="bar"><span data-t>Kraftschluss</span><i><b id="b_eng"></b></i><span id="v_eng">–</span></div>
+      </div>
+      <div class="kvs" style="margin-top:8px">
+        <span data-t>Drehzahl</span><span id="d_rpm">–</span>
+        <span data-t>Drehzahl Getriebe</span><span id="d_rpmg">–</span>
+        <span data-t>Gang / Empfehlung</span><span id="d_gear">–</span>
+        <span data-t>Ladedruck</span><span id="d_boost">–</span>
+        <span data-t>Energierückgewinnung</span><span id="d_energy">–</span>
+      </div>
+    </div>
+
+    <div class="card"><h2 data-t>Motor &amp; Sprit</h2>
+      <div class="kvs">
+        <span data-t>Wassertemperatur</span><span id="d_water">–</span>
+        <span data-t>Öltemperatur</span><span id="d_oil">–</span>
+        <span data-t>Öldruck</span><span id="d_oilp">–</span>
+        <span data-t>Sprit</span><span id="d_fuel">–</span>
+        <span data-t>Verbrauch Ø/Runde</span><span id="d_fpl">–</span>
+        <span data-t>Reicht für</span><span id="d_flaps">–</span>
+      </div>
+    </div>
+
+    <div class="card"><h2 data-t>Fahrzeug &amp; Getriebe</h2>
+      <div class="kvs">
+        <span data-t>Fahrzeug</span><span id="d_car">–</span>
+        <span data-t>Fahrzeug-ID</span><span id="d_carid">–</span>
+        <span data-t>Max. Tempo (berechnet)</span><span id="d_vmax">–</span>
+        <span data-t>Schaltblitz</span><span id="d_alert">–</span>
+        <span data-t>Übersetzungen</span><span id="d_ratios">–</span>
+      </div>
+    </div>
+
+    <div class="card"><h2 data-t>Lage &amp; Position</h2>
+      <div class="kvs">
+        <span>Position x / y / z</span><span id="d_pos">–</span>
+        <span data-t>Kurs</span><span id="d_head">–</span>
+        <span data-t>Nicken / Rollen</span><span id="d_pr">–</span>
+        <span data-t>Fahrzeughöhe</span><span id="d_bh">–</span>
+        <span data-t>Tempo</span><span id="d_speed">–</span>
+      </div>
+    </div>
+
+    <div class="card"><h2 data-t>Runden</h2>
+      <div class="kvs" style="margin-bottom:8px">
+        <span data-t>Runde</span><span id="d_lap">–</span>
+        <span data-t>Laufend</span><span id="d_cur">–</span>
+        <span data-t>Δ Live zur Bestrunde</span><span id="d_live">–</span>
+        <span data-t>Letzte − Beste</span><span id="d_lb">–</span>
+      </div>
+      <div id="laplist"></div>
+    </div>
+
+    <div class="card"><h2>Status</h2>
+      <div class="flags" id="flags"></div>
+      <div class="kvs" style="margin-top:8px">
+        <span data-t>Tageszeit (Spiel)</span><span id="d_tod">–</span>
+        <span data-t>Paketformat</span><span id="d_fmt">–</span>
+        <span data-t>Aufzeichnung</span><span id="d_rec">–</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ======================= Page 3: coach ======================= -->
+<section class="page" id="p3" hidden>
+  <div id="p3head">
+    <b>Coach</b>
+    <span id="coachUpdated"></span>
+    <span class="conn"><span class="rec" hidden>● REC</span><i></i><span class="connText">offline</span></span>
+    <span class="dots"><i></i><i></i><i class="on"></i><i></i></span>
+  </div>
+  <div id="p3body">
+    <div class="card" id="focus" hidden><h2 id="focusTitle" data-t>Fokus</h2><div id="focusText"></div></div>
+    <div id="feed"></div>
+  </div>
+</section>
+
+<!-- ======================= Page 4: measurements ======================= -->
+<section class="page" id="p4" hidden>
+  <div id="p4head">
+    <b data-t>Messung</b>
+    <span id="perfCar"></span>
+    <span class="coachpill" hidden>COACH ●</span>
+    <span class="conn"><span class="rec" hidden>● REC</span><i></i><span class="connText">offline</span></span>
+    <span class="dots"><i></i><i></i><i></i><i class="on"></i></span>
+  </div>
+  <div id="p4body">
+    <div class="card" id="perfLive">
+      <div class="row"><span class="pstate" id="perfState">–</span><span id="perfSpeed" class="num">–</span></div>
+      <div id="perfBig" class="num">–</div>
+      <div id="perfSub"></div>
+      <div class="marks" id="perfMarks"></div>
+      <p class="phint" id="perfHint"></p>
+    </div>
+
+    <div class="card"><h2><b data-t>Tempo über Zeit</b> <span id="perfAxis"></span></h2>
+      <canvas class="pchart" id="perfChart"></canvas>
+      <div class="pempty" id="perfChartEmpty" data-t>Noch keine Beschleunigung gemessen.</div>
+      <div class="legend" id="perfLegend"></div>
+      <div class="readout" id="perfRead"></div>
+    </div>
+
+    <div class="card"><h2 data-t>Schaltpunkte</h2>
+      <table class="ptable" id="shiftTable"></table>
+      <div class="pempty" id="dynoEmpty" data-t>Noch keine Auswertung: dafür mit Vollgas durch mehrere Gänge beschleunigen.</div>
+      <div id="dynoBox">
+        <h2 style="margin-top:12px"><b data-t>Leistungsband</b> <span data-t>% vom Maximum</span></h2>
+        <canvas class="pchart small" id="dynoChart"></canvas>
+        <div class="legend" id="dynoLegend"></div>
+        <div class="readout" id="dynoRead"></div>
+        <div class="peaks"><span id="dynoPeakP"></span><span id="dynoPeakT"></span><span id="dynoPw"></span></div>
+        <div class="phint" id="dynoFrom" style="margin-top:4px"></div>
+      </div>
+      <p class="phint" data-t>Berechnet aus der Beschleunigung bei Vollgas, ohne Gewichtsangabe. Optimal schalten heißt: im Gang bleiben, solange er bei gleichem Tempo mehr Leistung auf die Straße bringt als der nächste Gang nach dem Schalten. „spät“ = bis zum Begrenzer ausdrehen.</p>
+    </div>
+
+    <div class="card"><h2 data-t>Bestwerte</h2>
+      <table class="ptable" id="perfBest"></table>
+      <div class="pempty" id="perfBestEmpty" data-t>Noch keine Bestwerte für dieses Auto.</div>
+      <p class="phint" id="perfGradeHint" hidden></p>
+    </div>
+
+    <div class="card"><h2 data-t>Letzte Läufe</h2>
+      <div class="runlist" id="perfRuns"></div>
+    </div>
+  </div>
+</section>
+</div>
+
+
+<div class="overlay" id="start">
+  <div class="sheet">
+    <h1>Apexline</h1>
+    <p class="tag" data-t>Telemetrie-Dashboard &amp; Coach für Gran Turismo 7</p>
+    <p data-t>Tippen startet das Dashboard und hält den Bildschirm wach. Wischen wechselt zwischen Fahr-Ansicht, allen Daten, dem Coach-Feedback und den Messungen (0–100, Bremswege, Schaltpunkte), langes Drücken öffnet die Einstellungen. Tipp: Über „Teilen → Zum Home-Bildschirm“ läuft es im Vollbild.</p>
+    <button class="big" id="go" data-t>Starten</button>
+    <div id="wakeinfo"></div>
+  </div>
+</div>
+
+<div class="overlay" id="settings" hidden>
+  <div class="sheet">
+    <h1 data-t>Einstellungen</h1>
+    <p id="sTireHint"></p>
+    <label><span data-t>Reifen</span> <select id="sPreset"></select></label>
+    <label><span data-t>Kalt unter</span> <input type="number" id="sCold" inputmode="numeric"></label>
+    <label><span data-t>Optimal bis</span> <input type="number" id="sHot" inputmode="numeric"></label>
+    <label><span data-t>Überhitzt ab</span> <input type="number" id="sOver" inputmode="numeric"></label>
+    <label><span data-t>Glättung (Sekunden)</span> <input type="number" id="sSmooth" inputmode="decimal" step="0.5" min="0" max="15"></label>
+    <label><span data-t>Karte spiegeln</span> <input type="checkbox" id="sMirror"></label>
+    <label><span data-t>Helligkeit</span> <input type="range" id="sBright" min="0.35" max="1" step="0.05"></label>
+    <label><span data-t>Burn-in-Schutz (Pixel-Shift)</span> <input type="checkbox" id="sShift"></label>
+    <h2 class="sect">Server</h2>
+    <label><span data-t>Sprache</span> <select id="sLang"><option value="auto" data-t>Automatisch</option><option value="de">Deutsch</option><option value="en">English</option></select></label>
+    <label><span data-t>Einheiten</span> <select id="sUnits"><option value="auto" data-t>Automatisch</option><option value="metric" data-t>Metrisch (km/h, °C)</option><option value="imperial" data-t>Imperial (mph, °F)</option></select></label>
+    <label><span data-t>PS5-IP</span> <input type="text" id="sPs5" inputmode="decimal" data-t-ph="automatisch" placeholder="automatisch" autocomplete="off" spellcheck="false"></label>
+    <div class="sinfo" id="sLink"></div>
+    <label><span data-t>Dashboard-Port</span> <input type="number" id="sPort" inputmode="numeric" min="1" max="65535"></label>
+    <div class="sinfo" id="sServer"></div>
+    <div class="serr" id="sErr" hidden></div>
+    <button class="big" id="close" data-t>Fertig</button>
+    <button class="big ghost" id="resetCfg" data-t>Standardwerte</button>
+  </div>
+</div>
+
+<div id="nolink" hidden>
+  <b data-t>Keine Daten von GT7</b>
+  <span class="st" id="nolinkStatus"></span>
+  <span data-t>PS5 an und GT7 gestartet? Rechner und PS5 im selben Netz? Firewall: UDP 33739 und 33740 frei? Die PS5-IP lässt sich in den Einstellungen fest eintragen (lange drücken).</span>
+</div>
+
+<video id="keepawake" src="keepawake.mp4" playsinline muted loop preload="auto"></video>
+
+<script id="server-settings" type="application/json">{"language":"auto","units":"auto"}</script>
+<script src="i18n.js"></script>
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  const $$ = sel => document.querySelectorAll(sel);
+  // Texts and units (web/i18n.js); values from the server are metric and converted for display
+  const { t, U, imperial, locale } = I18N;
+  I18N.translatePage();
+  const setText = (id, v) => { const el = $(id); if (el.textContent !== v) el.textContent = v; };
+  const f = (v, d = 0, unit = '') => v == null || isNaN(v) ? '–' : v.toFixed(d) + unit;
+  // Per-device browser storage; values saved under the former name ("gt7…") are taken over once
+  const LEGACY_KEYS = { settings: 'gt7dash', page: 'gt7page', coachSeen: 'gt7coachSeen' };
+  const load = k => { try { return localStorage.getItem('apexline.' + k) ?? localStorage.getItem(LEGACY_KEYS[k]); } catch { return null; } };
+  const store = (k, v) => { try { localStorage.setItem('apexline.' + k, v); } catch {} };
+  const sgn = (v, d = 1, unit = '') => v == null ? '–' : (v > 0 ? '+' : v < 0 ? '−' : '±') + Math.abs(v).toFixed(d) + unit;
+
+  // ---------- Settings ----------
+  // Upper limits (wear rises disproportionately) from GTPlanet measurements with telemetry;
+  // the lower limits are estimates.
+  const PRESETS = {
+    rs: { name: 'Racing Soft', cold: 65, hot: 88, over: 100 },
+    rm: { name: 'Racing Medium', cold: 65, hot: 90, over: 102 },
+    rh: { name: 'Racing Hard', cold: 65, hot: 93, over: 105 },
+    custom: { name: t('Eigene Werte') },
+  };
+  const DEFAULTS = { preset: 'rm', cold: 65, hot: 90, over: 102, smooth: 4, mirror: false, bright: 1, shift: true };
+  let cfg = { ...DEFAULTS };
+  try {
+    const saved = JSON.parse(load('settings') || '{}');
+    if (!saved.preset) { delete saved.cold; delete saved.hot; delete saved.over; } // old version
+    Object.assign(cfg, saved);
+  } catch {}
+  $('sPreset').innerHTML = Object.entries(PRESETS).map(([k, p]) => `<option value="${k}">${p.name}</option>`).join('');
+  // Tyre limits are kept in °C and shown in the display unit
+  const TEMPS = new Set(['cold', 'hot', 'over']);
+  const showTemp = c => Math.round(U.tmp(c));
+  $('sPreset').addEventListener('change', () => {
+    const p = PRESETS[$('sPreset').value];
+    if (p.hot) { $('sCold').value = showTemp(p.cold); $('sHot').value = showTemp(p.hot); $('sOver').value = showTemp(p.over); }
+  });
+  setText('sTireHint', t('Reifenfenster in {u}. Unter „kalt“ blau, im Fenster grün, darüber gelb bis rot. Die Obergrenzen der Racing-Presets sind Community-Messungen, ab denen der Verschleiß überproportional steigt. Die Untergrenze ist ein Schätzwert.', { u: U.temp }));
+  ['sCold', 'sHot', 'sOver'].forEach(id => $(id).addEventListener('input', () => { $('sPreset').value = 'custom'; }));
+  const save = () => store('settings', JSON.stringify(cfg));
+  const applyCfg = () => document.documentElement.style.setProperty('--brightness', cfg.bright);
+  applyCfg();
+
+  const fields = { sCold: 'cold', sHot: 'hot', sOver: 'over', sSmooth: 'smooth', sBright: 'bright' };
+  const checks = { sShift: 'shift', sMirror: 'mirror' };
+  const openSettings = () => {
+    for (const [id, k] of Object.entries(fields)) $(id).value = TEMPS.has(k) ? showTemp(cfg[k]) : cfg[k];
+    for (const [id, k] of Object.entries(checks)) $(id).checked = cfg[k];
+    $('sPreset').value = cfg.preset;
+    $('sErr').hidden = true;
+    $('settings').hidden = false;
+    loadServerSettings();
+  };
+
+  // Server settings (config.toml): PS5 address and port
+  let server = null;
+  async function loadServerSettings() {
+    setText('sLink', linkText(lastData));
+    try {
+      server = await (await fetch('api/settings', { cache: 'no-store' })).json();
+      $('sPs5').value = server.ps5_ip;
+      $('sPort').value = server.http_port;
+      $('sLang').value = server.language;
+      $('sUnits').value = server.units;
+      showServerInfo();
+    } catch { server = null; setText('sServer', t('Server nicht erreichbar')); }
+  }
+  function showServerInfo() {
+    const restart = server.http_port !== server.port_in_use ? ' · ' + t('Port {p} gilt nach einem Neustart', { p: server.http_port }) : '';
+    setText('sServer', `${t('Daten')}: ${server.data_dir}\n${t('Konfiguration')}: ${server.config_file}${restart}`);
+  }
+  // Returns false if the server rejected the change (the sheet stays open)
+  async function saveServerSettings() {
+    if (!server) return true;
+    const ip = $('sPs5').value.trim(), port = parseInt($('sPort').value, 10);
+    const change = {};
+    if (ip !== server.ps5_ip) change.ps5_ip = ip;
+    if (port && port !== server.http_port) change.http_port = port;
+    if ($('sLang').value !== server.language) change.language = $('sLang').value;
+    if ($('sUnits').value !== server.units) change.units = $('sUnits').value;
+    if (!Object.keys(change).length) return true;
+    if (ip && !/^(\d{1,3}\.){3}\d{1,3}$/.test(ip)) { $('sErr').textContent = t('PS5-IP: z. B. 192.168.0.33, leer = automatisch'); $('sErr').hidden = false; return false; }
+    try {
+      const r = await fetch('api/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(change) });
+      const body = await r.json().catch(() => ({ error: t('Antwort ungültig') }));
+      if (!r.ok || body.error) throw new Error(body.error || r.statusText);
+      server = body;
+      // Language and units are applied by reloading the page
+      if (change.language || change.units) location.reload();
+      return true;
+    } catch (e) { $('sErr').textContent = t('Nicht gespeichert: {e}', { e: e.message }); $('sErr').hidden = false; return false; }
+  }
+  const readSettings = () => {
+    for (const [id, k] of Object.entries(fields)) {
+      const v = parseFloat($(id).value);
+      if (!isNaN(v)) cfg[k] = TEMPS.has(k) ? Math.round(U.tmpInv(v) * 10) / 10 : v;
+    }
+    for (const [id, k] of Object.entries(checks)) cfg[k] = $(id).checked;
+    cfg.preset = $('sPreset').value;
+    applyCfg(); save(); drawMap(true);
+  };
+  $('sBright').addEventListener('input', () => { cfg.bright = parseFloat($('sBright').value); applyCfg(); });
+  $('close').onclick = async () => {
+    readSettings();
+    if (await saveServerSettings()) $('settings').hidden = true;
+  };
+  $('resetCfg').onclick = () => { cfg = { ...DEFAULTS }; applyCfg(); save(); openSettings(); };
+
+  // ---------- Pages & gestures ----------
+  // Swiping left/right changes the page; a long press (600 ms) opens the settings.
+  // A short tap does nothing, so accidental touches in the rig change nothing.
+  let page = 1;
+  const PAGES = 4;
+  { const p = +load('page'); if (p >= 1 && p <= PAGES) page = p; }
+  function showPage(n) {
+    page = n;
+    for (let i = 1; i <= PAGES; i++) $('p' + i).hidden = n !== i;
+    store('page', n);
+    if (n === 1) requestAnimationFrame(() => drawMap(true));
+    if (n === 3) markCoachRead();
+    if (n === 4) requestAnimationFrame(() => { renderPerfData(); if (lastData.live) renderPerfLive(lastData); });
+  }
+  let press = null;
+  const pagesEl = $('pages');
+  pagesEl.addEventListener('pointerdown', e => {
+    const inList = e.target.closest('#p2body, #p3body, #p4body');
+    // Horizontal drags on a chart move its cursor instead of switching pages
+    press = { x: e.clientX, y: e.clientY, chart: !!e.target.closest('.pchart'),
+              timer: inList ? null : setTimeout(() => { press = null; openSettings(); }, 600) };
+  });
+  pagesEl.addEventListener('pointermove', e => {
+    if (press && Math.hypot(e.clientX - press.x, e.clientY - press.y) > 12) clearTimeout(press.timer);
+  });
+  const endPress = e => {
+    if (!press) return;
+    clearTimeout(press.timer);
+    const dx = e.clientX - press.x, dy = e.clientY - press.y;
+    if (!press.chart && Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.5) showPage(Math.max(1, Math.min(PAGES, page + (dx < 0 ? 1 : -1))));
+    press = null;
+  };
+  pagesEl.addEventListener('pointerup', endPress);
+  pagesEl.addEventListener('pointercancel', () => { if (press) clearTimeout(press.timer); press = null; });
+
+  // ---------- Keep the screen awake ----------
+  let wakeLock = null, wantAwake = false;
+  async function keepAwake() {
+    wantAwake = true;
+    if ('wakeLock' in navigator && window.isSecureContext) {
+      try {
+        wakeLock = await navigator.wakeLock.request('screen');
+        wakeLock.addEventListener('release', () => { wakeLock = null; });
+        $('wakeinfo').textContent = t('Wake Lock aktiv');
+        return;
+      } catch (e) { /* fallback below */ }
+    }
+    // Without HTTPS there is no Wake Lock API: a silent, invisible looping video keeps iOS awake.
+    try { await $('keepawake').play(); $('wakeinfo').textContent = t('Wachhalten per Video aktiv'); }
+    catch (e) { $('wakeinfo').textContent = t('Wachhalten nicht möglich – Auto-Sperre in iOS manuell abschalten'); }
+  }
+  function letSleep() {
+    wantAwake = false;
+    if (wakeLock) { wakeLock.release().catch(() => {}); wakeLock = null; }
+    $('keepawake').pause();
+  }
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && wantAwake) keepAwake();
+  });
+  $('go').onclick = () => { $('start').hidden = true; keepAwake(); };
+
+  // ---------- Burn-in protection ----------
+  // Every 30 s everything moves a few pixels along an orbit, so static elements (labels,
+  // borders) never stress the same pixels for long.
+  const ORBIT = [[0,0],[3,1],[4,-2],[1,-4],[-2,-3],[-4,0],[-3,3],[0,4],[3,3]];
+  let orbit = 0;
+  setInterval(() => {
+    orbit = (orbit + 1) % ORBIT.length;
+    const [x, y] = cfg.shift ? ORBIT[orbit] : [0, 0];
+    const s = document.documentElement.style;
+    s.setProperty('--shift-x', x + 'px'); s.setProperty('--shift-y', y + 'px');
+  }, 30000);
+
+  // After 10 min without driving the iPhone may lock as usual (saves the OLED);
+  // as soon as the car is driven again, the screen is kept awake again.
+  const SLEEP_AFTER = 10 * 60_000;
+  let lastActive = Date.now();
+  setInterval(() => {
+    const quiet = Date.now() - lastActive;
+    if (quiet > SLEEP_AFTER && wantAwake) letSleep();
+    else if (quiet < 5000 && !wantAwake && $('start').hidden) keepAwake();
+  }, 1000);
+
+  // ---------- Helpers ----------
+  const SEGMENTS = 24;
+  const rpmEl = $('rpm');
+  rpmEl.innerHTML = '<i></i>'.repeat(SEGMENTS);
+  const segs = [...rpmEl.children];
+  const fmt = ms => {
+    if (ms == null || ms < 0) return '–';
+    const m = Math.floor(ms / 60000), s = (ms % 60000) / 1000;
+    return `${m}:${s.toFixed(3).padStart(6, '0')}`;
+  };
+  const tireColor = t => {
+    if (!(t > 1)) return null;
+    if (t < cfg.cold) return 'var(--blue)';
+    if (t <= cfg.hot) return 'var(--green)';
+    if (t < cfg.over) return 'var(--yellow)';
+    return 'var(--red)';
+  };
+  const gearText = g => g === 0 ? 'R' : (g > 0 && g < 15 ? String(g) : 'N');
+
+  // ---------- Tyres ----------
+  const tires = [0,1,2,3].map(i => {
+    const el = $('t' + i);
+    return { el, t: el.querySelector('.t'), peak: el.querySelector('.peak'), slip: el.querySelector('.slip'),
+             color: null, avg: null, hist: [] };
+  });
+  // GT7 sends the surface temperature: slides create spikes that vanish within seconds. So the big
+  // number is a moving average, the small one the peak of the last seconds.
+  const PEAK_WINDOW = 8000;
+  let lastTireUpdate = 0;
+  function updateTire(tr, t, now, dt) {
+    if (!(t > 1)) { tr.avg = null; tr.hist = []; return null; }
+    const tau = cfg.smooth * 1000;
+    tr.avg = tr.avg == null || tau <= 0 ? t : tr.avg + (t - tr.avg) * (1 - Math.exp(-dt / tau));
+    tr.hist.push([now, t]);
+    while (tr.hist.length && tr.hist[0][0] < now - PEAK_WINDOW) tr.hist.shift();
+    return Math.max(...tr.hist.map(h => h[1]));
+  }
+
+  // ---------- Track map ----------
+  // GT7 reports no track: the server builds the map from the driven line.
+  let mapPts = [], mapVersion = -1, mapFetching = false, mapView = null, carPos = null;
+  // Corner numbers from the coach feedback (K1, K2, …), the focus corner is highlighted
+  let coachCorners = [], focusCorner = null;
+  const mapCanvas = $('map'), mctx = mapCanvas.getContext('2d');
+  const baseCanvas = document.createElement('canvas'), bctx = baseCanvas.getContext('2d');
+  async function fetchMap(version) {
+    if (mapFetching) return;
+    mapFetching = true;
+    try {
+      const m = await (await fetch('api/map', { cache: 'no-store' })).json();
+      mapPts = m.points; mapVersion = version ?? m.version;
+      drawMap(true);
+    } catch {} finally { mapFetching = false; }
+  }
+  function project(x, z) {
+    const v = mapView;
+    let px = cfg.mirror ? -x : x, pz = z;
+    if (v.rot) [px, pz] = [pz, -px];
+    return [v.ox + (px - v.minX) * v.s, v.oy + (pz - v.minZ) * v.s];
+  }
+  function drawMap(full) {
+    if (page !== 1) return;
+    const dpr = devicePixelRatio || 1;
+    const w = mapCanvas.clientWidth, h = mapCanvas.clientHeight;
+    if (!w || !h) return;
+    if (full || mapCanvas.width !== Math.round(w * dpr)) {
+      mapCanvas.width = baseCanvas.width = Math.round(w * dpr);
+      mapCanvas.height = baseCanvas.height = Math.round(h * dpr);
+      bctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      bctx.clearRect(0, 0, w, h);
+      $('maphint').hidden = mapPts.length > 10;
+      mapView = null;
+      if (mapPts.length > 1) {
+        // Pick the orientation that uses the area best
+        const pad = 16;
+        let best = null;
+        for (const rot of [false, true]) {
+          let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
+          for (const p of mapPts) {
+            let px = cfg.mirror ? -p.x : p.x, pz = p.z;
+            if (rot) [px, pz] = [pz, -px];
+            minX = Math.min(minX, px); maxX = Math.max(maxX, px); minZ = Math.min(minZ, pz); maxZ = Math.max(maxZ, pz);
+          }
+          const s = Math.min((w - 2 * pad) / Math.max(maxX - minX, 1), (h - 2 * pad - 10) / Math.max(maxZ - minZ, 1));
+          if (!best || s > best.s) best = { rot, s, minX, minZ, ox: pad + ((w - 2 * pad) - (maxX - minX) * s) / 2, oy: pad + 10 + ((h - 2 * pad - 10) - (maxZ - minZ) * s) / 2 };
+        }
+        mapView = best;
+        bctx.lineWidth = 3; bctx.lineJoin = bctx.lineCap = 'round';
+        bctx.strokeStyle = '#34343c';
+        bctx.beginPath();
+        mapPts.forEach((p, i) => { const [x, y] = project(p.x, p.z); i ? bctx.lineTo(x, y) : bctx.moveTo(x, y); });
+        bctx.stroke();
+        const [sx, sy] = project(mapPts[0].x, mapPts[0].z);
+        bctx.fillStyle = '#6b6b75'; bctx.fillRect(sx - 1, sy - 6, 3, 12); // start/finish
+        bctx.font = '600 9px ui-monospace, monospace'; bctx.textAlign = 'center'; bctx.textBaseline = 'middle';
+        for (const c of coachCorners) {
+          const [cx, cy] = project(c.x, c.z);
+          if (c.n === focusCorner) {
+            bctx.fillStyle = '#f2c230'; bctx.beginPath(); bctx.arc(cx, cy, 8, 0, Math.PI * 2); bctx.fill();
+            bctx.fillStyle = '#000'; bctx.fillText(c.n, cx, cy + .5);
+          } else {
+            bctx.fillStyle = '#5a5a63'; bctx.fillText(c.n, cx, cy - 9);
+          }
+        }
+      }
+    }
+    mctx.setTransform(1, 0, 0, 1, 0, 0);
+    mctx.clearRect(0, 0, mapCanvas.width, mapCanvas.height);
+    mctx.drawImage(baseCanvas, 0, 0);
+    if (mapView && carPos) {
+      mctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      const [x, y] = project(carPos.x, carPos.z);
+      const [x2, y2] = project(carPos.x + Math.sin(carPos.h) * 30, carPos.z + Math.cos(carPos.h) * 30);
+      const a = Math.atan2(y2 - y, x2 - x);
+      mctx.translate(x, y); mctx.rotate(a);
+      mctx.fillStyle = carPos.color;
+      mctx.beginPath(); mctx.moveTo(9, 0); mctx.lineTo(-6, -6); mctx.lineTo(-3, 0); mctx.lineTo(-6, 6); mctx.closePath(); mctx.fill();
+    }
+  }
+  addEventListener('resize', () => drawMap(true));
+
+  // ---------- G meter ----------
+  const gCanvas = $('gmeter'), gctx = gCanvas.getContext('2d');
+  const gTrail = [];
+  let gMaxLat = 0, gMaxBrake = 0;
+  function drawG(lat, lon) {
+    const dpr = devicePixelRatio || 1, w = gCanvas.clientWidth, h = gCanvas.clientHeight;
+    if (!w) return;
+    if (gCanvas.width !== Math.round(w * dpr)) { gCanvas.width = Math.round(w * dpr); gCanvas.height = Math.round(h * dpr); }
+    gctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    gctx.clearRect(0, 0, w, h);
+    const cx = w / 2, cy = h / 2, R = Math.min(w, h) / 2 - 4, G = 3; // scale up to 3 g
+    gctx.strokeStyle = '#1c1c21'; gctx.lineWidth = 1;
+    for (let g = 1; g <= G; g++) { gctx.beginPath(); gctx.arc(cx, cy, R * g / G, 0, Math.PI * 2); gctx.stroke(); }
+    gctx.beginPath(); gctx.moveTo(cx - R, cy); gctx.lineTo(cx + R, cy); gctx.moveTo(cx, cy - R); gctx.lineTo(cx, cy + R); gctx.stroke();
+    gctx.fillStyle = '#4a4a52'; gctx.font = '9px ui-monospace, monospace';
+    for (let g = 1; g <= G; g++) gctx.fillText(g + 'g', cx + 3, cy - R * g / G + 10);
+    const pt = (la, lo) => [cx + Math.max(-1, Math.min(1, la / G)) * R, cy - Math.max(-1, Math.min(1, lo / G)) * R];
+    gTrail.push(pt(lat, lon)); if (gTrail.length > 90) gTrail.shift();
+    gTrail.forEach(([x, y], i) => { gctx.fillStyle = `rgba(138,138,148,${i / gTrail.length * .5})`; gctx.fillRect(x - 1.5, y - 1.5, 3, 3); });
+    const [x, y] = pt(lat, lon);
+    gctx.fillStyle = '#f2c230'; gctx.beginPath(); gctx.arc(x, y, 5, 0, Math.PI * 2); gctx.fill();
+  }
+
+  // ---------- Status flags ----------
+  const FLAGS = [['on_track', 'Auf Strecke'], ['paused', 'Pause'], ['loading', 'Lädt'], ['in_gear', 'Gang drin'],
+                 ['rev_limiter', 'Begrenzer'], ['handbrake', 'Handbremse'], ['lights', 'Licht'], ['high_beam', 'Fernlicht'],
+                 ['tcs', 'TCS'], ['asm', 'ASM']];
+  $('flags').innerHTML = FLAGS.map(([k, n]) => `<span class="pill" data-flag="${k}">${t(n)}</span>`).join('');
+  const flagEls = [...$$('#flags .pill')];
+
+  // ---------- Connection ----------
+  function linkText(d) {
+    const l = d && d.link;
+    if (d && d.live) return l && l.ps5 ? t('Verbunden mit PS5 {ip}', { ip: l.ps5 }) : t('Verbunden');
+    if (!l) return t('Keine Verbindung zum Apexline-Server');
+    if (l.configured) return t('Sende an {ip} – keine Antwort', { ip: l.configured });
+    return l.ps5 ? t('Suche PS5 (zuletzt {ip}) und per Broadcast …', { ip: l.ps5 }) : t('Suche PS5 per Broadcast …');
+  }
+  // The hint appears after 3 s without data and stays hidden after a tap until data came back
+  let offlineSince = Date.now(), nolinkDismissed = false;
+  function updateNolink() {
+    if (lastData.live) { offlineSince = null; nolinkDismissed = false; $('nolink').hidden = true; return; }
+    offlineSince ??= Date.now();
+    const show = !nolinkDismissed && Date.now() - offlineSince > 3000 && $('start').hidden;
+    $('nolink').hidden = !show;
+    if (show) setText('nolinkStatus', linkText(lastData));
+    if (!$('settings').hidden) setText('sLink', linkText(lastData));
+  }
+  $('nolink').onclick = () => { nolinkDismissed = true; $('nolink').hidden = true; };
+  setInterval(updateNolink, 1000);
+
+  // ---------- Rendering ----------
+  let lastData = { live: false };
+  // Balance state with hysteresis: in only above the threshold, out only clearly below it
+  let balState = 'none';
+  function balanceState(b) {
+    if (b == null) return 'none';
+    if (balState === 'under' && b > 1.2) return 'under';
+    if (balState === 'over' && b < -0.8) return 'over';
+    return b > 2.5 ? 'under' : b < -2 ? 'over' : 'neutral';
+  }
+  function render(d) {
+    lastData = d;
+    $$('.conn').forEach(el => el.classList.toggle('live', d.live));
+    const ct = d.live ? (d.paused ? t('Pause') : 'live') : 'offline';
+    $$('.connText').forEach(el => { if (el.textContent !== ct) el.textContent = ct; });
+    $$('.rec').forEach(el => { el.hidden = !(d.live && d.recording); });
+    if (d.live && d.on_track && !d.paused && !d.loading) lastActive = Date.now();
+    updateNolink();
+    if (!d.live) return;
+    if (d.map_version !== mapVersion) fetchMap(d.map_version);
+
+    // Tyres: smoothing always runs, so the average is right after a page change
+    const now = performance.now(), dt = lastTireUpdate ? Math.min(now - lastTireUpdate, 1000) : 0;
+    lastTireUpdate = now;
+    const tireVals = d.tire_temp.map((raw, i) => {
+      const tr = tires[i];
+      return { tr, peak: updateTire(tr, raw, now, dt), t: tr.avg };
+    });
+
+    trackPerf(d);
+    if (page === 1) renderMain(d, tireVals); else if (page === 2) renderDetails(d); else if (page === 4) renderPerfLive(d);
+  }
+
+  function renderMain(d, tireVals) {
+    // RPM / shift light
+    const max = d.rpm_alert_max > 0 ? d.rpm_alert_max : 8000;
+    const min = d.rpm_alert_min > 0 ? d.rpm_alert_min : max * 0.9;
+    const start = max * 0.45;
+    const lit = Math.max(0, Math.min(SEGMENTS, Math.round((d.rpm - start) / (max - start) * SEGMENTS)));
+    const flash = d.rpm >= max || d.rev_limiter;
+    rpmEl.classList.toggle('flash', flash);
+    for (let i = 0; i < SEGMENTS; i++) {
+      const frac = (i + 1) / SEGMENTS, segRpm = start + frac * (max - start);
+      const cls = i < lit ? (segRpm >= min ? 'on-r' : frac > 0.6 ? 'on-y' : 'on-g') : '';
+      if (segs[i].className !== cls) segs[i].className = cls;
+    }
+
+    // Gear / speed
+    setText('gear', gearText(d.gear));
+    $('gear').classList.toggle('limit', flash);
+    setText('sugg', d.suggested_gear != null && d.suggested_gear !== d.gear ? '→ ' + gearText(d.suggested_gear) : '');
+    setText('speed', String(Math.round(U.spd(d.speed_kmh))));
+    setText('rpmnum', Math.round(d.rpm) + ' ' + t('U/min'));
+    $('thr').firstChild.style.height = d.throttle + '%';
+    $('brake').firstChild.style.height = d.brake + '%';
+
+    // Tyres
+    tireVals.forEach(({ tr, peak, t: temp }, i) => {
+      const c = tireColor(temp);
+      tr.t.innerHTML = temp != null ? `${Math.round(U.tmp(temp))}<small>°</small>` : '--';
+      // Show the peak only if it is clearly above the average
+      tr.peak.textContent = peak != null && peak - temp >= 3 ? `▲${Math.round(U.tmp(peak))}°` : '';
+      tr.peak.style.color = peak != null && peak >= cfg.over ? 'var(--red)' : '';
+      if (c !== tr.color) { tr.color = c; c ? tr.el.style.setProperty('--c', c) : tr.el.style.removeProperty('--c'); }
+      const s = d.tire_slip[i];
+      let cls = '', txt = '';
+      if (s != null && d.brake > 10 && s < 0.85) { cls = 'lock'; txt = t('BLOCK'); }
+      else if (s != null && d.throttle > 10 && s > 1.15) { cls = 'spin'; txt = t('SCHLUPF'); }
+      tr.slip.className = 'slip ' + cls; tr.slip.textContent = txt;
+    });
+
+    // Map
+    const b = d.balance;
+    balState = balanceState(b);
+    const balColor = { none: '#d9d9de', under: '#3d8bff', over: '#ff8a2a', neutral: '#2fd36b' }[balState];
+    carPos = { x: d.pos[0], z: d.pos[2], h: d.heading * Math.PI / 180, color: balColor };
+    drawMap(false);
+
+    // Balance: + understeer (left), − oversteer (right)
+    const mark = $('balMark');
+    const BAL = { none: ['–', 'var(--line)', ''], neutral: [t('Neutral'), 'var(--green)', ''],
+                  under: [t('Untersteuern'), 'var(--blue)', 'var(--blue)'], over: [t('Übersteuern'), 'var(--orange)', 'var(--orange)'] };
+    const [txt, markColor, txtColor] = BAL[balState];
+    mark.style.left = (b == null ? 50 : 50 - Math.max(-1, Math.min(1, b / 8)) * 46) + '%';
+    mark.style.background = markColor;
+    setText('balText', txt);
+    $('balText').style.color = txtColor;
+
+    // Laps
+    setText('lapnum', d.lap > 0 ? (d.total_laps > 0 ? `${d.lap} / ${d.total_laps}` : String(d.lap)) : '–');
+    setText('laptime', d.current_lap_ms != null ? fmt(d.current_lap_ms) : '–:––.–––');
+    setText('last', fmt(d.last_lap_ms));
+    setText('best', fmt(d.best_lap_ms));
+    const ld = $('livedelta');
+    if (d.live_delta_ms != null) {
+      setText('livedelta', sgn(d.live_delta_ms / 1000, 2));
+      ld.className = 'num ' + (d.live_delta_ms > 0 ? 'delta-pos' : d.live_delta_ms < 0 ? 'delta-neg' : '');
+    } else { setText('livedelta', '–'); ld.className = 'num'; }
+
+    // Fuel
+    const ev = d.fuel_capacity === 100; // GT7 reports percent for electric cars
+    const fuelText = (l, dig) => ev ? `${l.toFixed(dig)} %` : `${U.fl(l).toFixed(dig)} ${U.fuel}`;
+    setText('fuel', d.fuel_capacity > 0 ? fuelText(d.fuel, 1) : '–');
+    const pct = d.fuel_capacity > 0 ? d.fuel / d.fuel_capacity * 100 : 0;
+    const fb = $('fuelbar').firstChild;
+    fb.style.width = pct + '%';
+    const lapsLeft = d.fuel_laps_left;
+    const remaining = d.total_laps > 0 ? d.total_laps - d.lap + 1 : null;
+    const short = lapsLeft != null && remaining != null && lapsLeft < remaining;
+    fb.style.background = short ? 'var(--red)' : pct < 15 ? 'var(--yellow)' : 'var(--dim)';
+    setText('fpl', d.fuel_per_lap != null ? (ev ? d.fuel_per_lap : U.fl(d.fuel_per_lap)).toFixed(2) : '–');
+    setText('fuellaps', lapsLeft != null ? lapsLeft.toFixed(1) + ' ' + t('Rd.') : '–');
+    $('fuellaps').style.color = short ? 'var(--red)' : '';
+
+    // Bottom strip
+    setText('water', String(Math.round(U.tmp(d.water_temp))));
+    setText('oil', String(Math.round(U.tmp(d.oil_temp))));
+    $('boostwrap').hidden = d.boost_bar == null;
+    if (d.boost_bar != null) setText('boost', U.prs(d.boost_bar).toFixed(imperial ? 1 : 2));
+    $('poswrap').hidden = d.position == null;
+    if (d.position != null) setText('pos', d.cars ? `${d.position}/${d.cars}` : String(d.position));
+    $('tcs').classList.toggle('on', d.tcs);
+    $('asm').classList.toggle('on', d.asm);
+    setText('carname', d.car_name || '');
+  }
+
+  function renderDetails(d) {
+    const G = 9.81;
+    const glat = d.sway / G, glong = d.surge / G, gvert = d.heave / G;
+    if (d.speed_kmh > 20) { gMaxLat = Math.max(gMaxLat, Math.abs(glat)); gMaxBrake = Math.max(gMaxBrake, -glong); }
+    drawG(glat, glong);
+    setText('d_glat', f(glat, 2, ' g')); setText('d_glong', f(glong, 2, ' g')); setText('d_gvert', f(gvert, 2, ' g'));
+    setText('d_gmax', `${gMaxLat.toFixed(2)} / ${gMaxBrake.toFixed(2)} g`);
+
+    $('steerwheel').style.transform = `rotate(${-d.steering_deg}deg)`;
+    setText('d_steer', f(d.steering_deg, 1, '°'));
+    setText('d_yaw', f(d.yaw_rate_deg, 1, '°/s'));
+    setText('d_beta', f(d.body_slip, 1, '°'));
+    setText('d_sf', f(d.slip_front, 1, '°'));
+    setText('d_sr', f(d.slip_rear, 1, '°'));
+    setText('d_bal', d.balance == null ? '–' : sgn(d.balance, 1, '°'));
+    setText('d_vlat', f(U.spd(d.v_lat_kmh), 1, ' ' + U.speed));
+    setText('d_ratio', f(d.steer_ratio, 1, ' : 1'));
+
+    for (let i = 0; i < 4; i++) {
+      setText('w_t' + i, f(U.tmp(d.tire_temp[i]), 0));
+      setText('w_v' + i, f(U.spd(d.wheel_speed_kmh[i]), 0));
+      setText('w_s' + i, d.tire_slip[i] == null ? '–' : sgn((d.tire_slip[i] - 1) * 100, 0));
+      setText('w_h' + i, f(U.travel(d.suspension[i] * 1000), imperial ? 2 : 0));
+      setText('w_r' + i, f(U.radius(d.tire_radius[i] * 100), 1));
+    }
+
+    const bar = (id, frac, txt) => { $('b_' + id).style.width = Math.max(0, Math.min(1, frac)) * 100 + '%'; setText('v_' + id, txt); };
+    bar('thr', d.throttle / 100, f(d.throttle, 0, '%'));
+    bar('brk', d.brake / 100, f(d.brake, 0, '%'));
+    bar('clu', d.clutch_pedal, f(d.clutch_pedal * 100, 0, '%'));
+    bar('eng', d.clutch_engagement, f(d.clutch_engagement * 100, 0, '%'));
+    setText('d_rpm', f(d.rpm, 0, ' ' + t('U/min')));
+    setText('d_rpmg', f(d.rpm_clutch_gearbox, 0, ' ' + t('U/min')));
+    setText('d_gear', `${gearText(d.gear)} / ${d.suggested_gear != null ? gearText(d.suggested_gear) : '–'}`);
+    setText('d_boost', d.boost_bar != null ? f(U.prs(d.boost_bar), imperial ? 1 : 2, ' ' + U.press) : t('kein Turbo'));
+    setText('d_energy', f(d.energy_recovery, 2));
+
+    setText('d_water', f(U.tmp(d.water_temp), 0, ' ' + U.temp));
+    setText('d_oil', f(U.tmp(d.oil_temp), 0, ' ' + U.temp));
+    setText('d_oilp', f(U.prs(d.oil_pressure), imperial ? 1 : 2, ' ' + U.press));
+    const ev = d.fuel_capacity === 100, fl = v => ev || v == null ? v : U.fl(v), fu = ev ? ' %' : ' ' + U.fuel;
+    setText('d_fuel', `${f(fl(d.fuel), 1)} / ${f(fl(d.fuel_capacity), 0, fu)}`);
+    setText('d_fpl', f(fl(d.fuel_per_lap), 2, fu));
+    setText('d_flaps', d.fuel_laps_left != null ? t('{n} Runden', { n: d.fuel_laps_left.toFixed(1) }) : '–');
+
+    setText('carname2', d.car_name || t('Fahrzeug {code}', { code: d.car_code }));
+    setText('d_car', d.car_name || t('unbekannt'));
+    setText('d_carid', String(d.car_code));
+    setText('d_vmax', f(U.spd(d.calc_max_speed), 0, ' ' + U.speed));
+    setText('d_alert', `${d.rpm_alert_min}–${d.rpm_alert_max} ${t('U/min')}`);
+    setText('d_ratios', d.gear_ratios.length ? d.gear_ratios.map(r => r.toFixed(2)).join(' · ') : '–');
+
+    setText('d_pos', d.pos.map(v => v.toFixed(0)).join(' / '));
+    setText('d_head', f((d.heading + 360) % 360, 0, '°'));
+    setText('d_pr', `${f(d.pitch, 1, '°')} / ${f(d.roll, 1, '°')}`);
+    setText('d_bh', f(U.travel(d.body_height * 1000), imperial ? 2 : 0, ' ' + U.lenUnit));
+    setText('d_speed', f(U.spd(d.speed_kmh), 1, ' ' + U.speed));
+
+    setText('d_lap', d.lap > 0 ? (d.total_laps > 0 ? `${d.lap} / ${d.total_laps}` : String(d.lap)) : '–');
+    setText('d_cur', fmt(d.current_lap_ms));
+    setText('d_live', d.live_delta_ms == null ? '–' : sgn(d.live_delta_ms / 1000, 3, ' s'));
+    setText('d_lb', d.last_lap_ms != null && d.best_lap_ms != null ? sgn((d.last_lap_ms - d.best_lap_ms) / 1000, 3, ' s') : '–');
+    const bestOwn = d.laps.length ? Math.min(...d.laps) : null;
+    const lapHtml = d.laps.map((ms, i) => `<span>${t('Runde {n}', { n: d.lap - d.laps.length + i })}</span><span>${fmt(ms)}</span><span>${ms === bestOwn ? '★' : sgn((ms - bestOwn) / 1000, 3)}</span>`).reverse().join('');
+    if ($('laplist').innerHTML !== lapHtml) $('laplist').innerHTML = lapHtml;
+
+    flagEls.forEach(el => el.classList.toggle('on', !!d[el.dataset.flag]));
+    const tod = d.time_of_day_ms;
+    setText('d_tod', tod > 0 ? `${String(Math.floor(tod / 3600000) % 24).padStart(2, '0')}:${String(Math.floor(tod / 60000) % 60).padStart(2, '0')}` : '–');
+    setText('d_fmt', d.extended ? t('erweitert (344 Bytes)') : t('einfach (296 Bytes)'));
+    setText('d_rec', d.recording ? t('läuft') : t('aus'));
+  }
+
+  // ---------- Coach feedback (page 3) ----------
+  // The server reads coach/feed.json fresh on every request; new entries are found by polling.
+  let coachSeen = '', coachUpdated = '';
+  coachSeen = load('coachSeen') || '';
+  function markCoachRead() {
+    coachSeen = coachUpdated;
+    store('coachSeen', coachSeen);
+    $$('.coachpill').forEach(el => { el.hidden = true; });
+  }
+  const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+  function renderCoach(c) {
+    const focus = c.focus;
+    coachCorners = c.corners || [];
+    focusCorner = focus && focus.corner != null ? focus.corner : null;
+    drawMap(true);
+    $('focus').hidden = !focus;
+    if (focus) { $('focusTitle').textContent = focus.title || t('Fokus'); $('focusText').textContent = focus.text || ''; }
+    const feed = $('feed');
+    feed.replaceChildren(...(c.items || []).map(it => {
+      const card = el('div', 'card fb ' + (it.tone || 'info'));
+      const head = el('div', 'row');
+      head.append(el('h3', null, it.title || ''), el('span', 'when', [it.lap != null ? t('Runde {n}', { n: it.lap }) : '', it.time || ''].filter(Boolean).join(' · ')));
+      card.append(head);
+      if (it.text) card.append(el('p', null, it.text));
+      if (it.points && it.points.length) { const ul = el('ul'); it.points.forEach(p => ul.append(el('li', null, p))); card.append(ul); }
+      if (it.stats) {
+        const st = el('div', 'stats');
+        Object.entries(it.stats).forEach(([k, v]) => { const sp = el('span', null, k + ' '); sp.append(el('b', null, String(v))); st.append(sp); });
+        card.append(st);
+      }
+      return card;
+    }));
+    setText('coachUpdated', c.updated ? t('Stand {time}', { time: new Date(c.updated).toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' }) }) : '');
+  }
+  async function pollCoach() {
+    try {
+      const c = await (await fetch('api/coach', { cache: 'no-store' })).json();
+      const updated = c.updated || '';
+      if (updated !== coachUpdated) {
+        coachUpdated = updated;
+        renderCoach(c);
+        if (page === 3) markCoachRead();
+        else $$('.coachpill').forEach(el => { el.hidden = !updated || updated === coachSeen; });
+      }
+    } catch {}
+  }
+  // ---------- Measurements (page 4) ----------
+  // The server detects the runs by itself (stop + throttle = acceleration, full braking from 100 km/h
+  // to standstill = braking distance). Live state and marks reached come with the snapshot (d.perf),
+  // stored runs with their curves from api/perf. When d.perf.saved changes, it is reloaded.
+  // Marks exist in km/h and mph; only those of the unit system in use are shown.
+  const SERIES = { last: '#3d8bff', best: '#8a8a94', live: '#f2c230', torque: '#f2c230' };
+  let perf = null, perfKey = null, perfFetching = false, livePts = [], perfCursor = null, dynoCursor = null;
+  const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+  const DIST = { '1/8mi': ['1/8', 1], '1/4mi': ['1/4', 2], '1/2mi': ['1/2', 3], '1km': ['1', 4] };
+  const isDist = k => k in DIST;
+  const isBrake = k => /^\d+-0(mph)?$/.test(k);
+  const shown = k => k === '1km' ? !imperial : k === '1/2mi' ? imperial : isDist(k) || k.endsWith('mph') === imperial;
+  const perfLabel = k => {
+    if (k === '1km') return '1 km';
+    if (isDist(k)) return `${DIST[k][0]} ${t('Meile')}`;
+    return k.replace('mph', '').replace('-', '–') + (k.endsWith('mph') ? ' mph' : ' km/h');
+  };
+  // Order: 0–X, rolling intervals, distances, braking
+  function rank(k) {
+    if (isDist(k)) return [2, DIST[k][1]];
+    const [a, b] = k.replace('mph', '').split('-').map(Number);
+    return a === 0 ? [0, b] : b === 0 ? [3, a] : [1, a];
+  }
+  const byRank = (a, b) => { const x = rank(a), y = rank(b); return x[0] - y[0] || x[1] - y[1]; };
+  const maxGrade = () => perf && perf.max_grade || 2;
+  const speedText = kmh => `${Math.round(U.spd(kmh))} ${U.speed}`;
+  const rpmText = rpm => `${Math.round(rpm)} ${t('U/min')}`;
+  const markValue = m => isBrake(m.key) ? `${U.dst(m.d).toFixed(1)} ${U.dist}` : m.t.toFixed(2) + ' s';
+  const markExtra = m => isBrake(m.key) ? m.t.toFixed(2) + ' s' : isDist(m.key) ? speedText(m.v) : '';
+  const headKey = kind => kind === 'brake' ? (imperial ? '60-0mph' : '100-0') : (imperial ? '0-60mph' : '0-100');
+  function markDelta(m) {
+    if (Math.abs(m.g || 0) > maxGrade()) return [`${t(m.g > 0 ? 'Steigung' : 'Gefälle')} ${Math.abs(m.g).toFixed(1)} %`, 'warn'];
+    const b = perf && perf.best && perf.best[m.key];
+    if (!b) return ['', ''];
+    const brake = isBrake(m.key), diff = brake ? m.d - b.d : m.t - b.t;
+    if (Math.abs(diff) < (brake ? 0.05 : 0.005)) return [t('★ Best'), 'best'];
+    return [brake ? sgn(U.dst(diff), 1, ' ' + U.dist) : sgn(diff, 2, ' s'), diff < 0 ? 'delta-neg' : 'delta-pos'];
+  }
+  function marksHtml(marks, title) {
+    marks = (marks || []).filter(m => shown(m.key));
+    if (!marks.length) return '';
+    return `<span class="h">${esc(title)}</span>` + marks.sort((a, b) => byRank(a.key, b.key)).map(m => {
+      const [dt, cls] = markDelta(m);
+      return `<span class="k">${esc(perfLabel(m.key))}</span><span class="v">${markValue(m)}</span>` +
+             `<span class="x">${markExtra(m)}</span><span class="dl ${cls}">${esc(dt)}</span>`;
+    }).join('');
+  }
+  const setHtml = (id, html) => { const e = $(id); if (e.innerHTML !== html) e.innerHTML = html; };
+  const when = (iso, opts) => new Date(iso).toLocaleString(locale, opts);
+
+  async function fetchPerf(car) {
+    if (perfFetching) return;
+    perfFetching = true;
+    try {
+      perf = await (await fetch('api/perf' + (car ? '?car=' + car : ''), { cache: 'no-store' })).json();
+      livePts = [];
+      renderPerfData();
+    } catch (e) { perfKey = null; } finally { perfFetching = false; }
+  }
+
+  // On every snapshot: record the live curve, reload on a new run or another car
+  function trackPerf(d) {
+    const p = d.perf;
+    if (!p) return;
+    const key = `${d.car_code}:${p.saved}`;
+    if (key !== perfKey) { perfKey = key; fetchPerf(d.car_code); }
+    if (p.phase === 'accel') {
+      const lastT = livePts.length ? livePts[livePts.length - 1][0] : -1;
+      if (p.t < lastT) livePts = [];
+      if (p.t > lastT) livePts.push([p.t, d.speed_kmh]);
+      if (page === 4) drawSpeedChart();
+    } else if (livePts.length) {
+      // Attempt over: a valid run comes back from the server as the last run
+      livePts = [];
+      if (page === 4) drawSpeedChart();
+    }
+  }
+
+  function renderPerfLive(d) {
+    const p = d.perf;
+    if (!p) return;
+    const last = p.last || (perf && perf.runs && perf.runs[0]);
+    const lastMarks = last ? last.marks : [];
+    let state = '–', cls = '', big = '–', sub = '', marks = '';
+    if (p.phase === 'accel') {
+      state = t('Messung läuft'); cls = 'run'; big = p.t.toFixed(2) + ' s';
+      sub = `${Math.round(U.dst(p.d))} ${U.dist} · ${t('Bremse oder Gas weg beendet')}`;
+      marks = marksHtml(p.marks, t('Dieser Lauf'));
+    } else if (p.phase === 'brake') {
+      state = t('Bremsung'); cls = 'brake'; big = `${U.dst(p.d).toFixed(1)} ${U.dist}`;
+      sub = `${p.t.toFixed(2)} s · ${t('bis zum Stillstand bremsen')}`;
+      marks = marksHtml(lastMarks, t('Letzter Lauf'));
+    } else if (p.phase === 'ready') {
+      state = t('Bereit'); cls = 'ready'; big = '0.00 s'; sub = t('Gas geben startet die Messung');
+      marks = marksHtml(lastMarks, t('Letzter Lauf'));
+    } else if (last) {
+      const head = last.marks.find(m => m.key === headKey(last.kind)) || last.marks.find(m => shown(m.key));
+      state = t('Keine Messung'); big = head ? markValue(head) : '–'; sub = head ? `${perfLabel(head.key)} · ${t('letzter Lauf')}` : '';
+      marks = marksHtml(lastMarks, t('Letzter Lauf'));
+    } else {
+      sub = t('Zum Messen anhalten');
+    }
+    const st = $('perfState');
+    setText('perfState', state);
+    if (st.className !== 'pstate ' + cls) st.className = 'pstate ' + cls;
+    setText('perfSpeed', d.live ? speedText(d.speed_kmh) : '–');
+    setText('perfBig', big);
+    setText('perfSub', sub);
+    setHtml('perfMarks', marks);
+  }
+
+  function renderPerfData() {
+    if (page !== 4) return;
+    const P = perf || { runs: [], best: {} };
+    setText('perfCar', P.car || '');
+    setText('perfHint', t('Anhalten und Gas geben misst die Beschleunigung (zählt ab {v}). Vollbremsung ab {v} bis zum Stillstand misst den Bremsweg.', { v: speedText(100) }));
+    setText('perfAxis', `${U.speed} · s`);
+    // Best values
+    const keys = Object.keys(P.best || {}).filter(shown).sort(byRank);
+    let group = -1;
+    setHtml('perfBest', keys.map(k => {
+      const b = P.best[k], m = { key: k, ...b }, g = rank(k)[0];
+      const sep = group >= 0 && g !== group ? ' class="sep"' : '';
+      group = g;
+      return `<tr${sep}><td>${esc(perfLabel(k))}</td><td class="v">${markValue(m)}</td><td class="x">${markExtra(m)}</td>` +
+             `<td class="w">${when(b.time, { day: '2-digit', month: '2-digit' })}</td></tr>`;
+    }).join(''));
+    $('perfBestEmpty').hidden = keys.length > 0;
+    const sloped = (P.runs || []).some(r => r.marks.some(m => shown(m.key) && Math.abs(m.g || 0) > maxGrade()));
+    $('perfGradeHint').hidden = !sloped;
+    setText('perfGradeHint', t('Werte mit mehr als {g} % Steigung oder Gefälle zählen nicht als Bestwert.', { g: maxGrade() }));
+    // Recent runs
+    setHtml('perfRuns', (P.runs || []).slice(0, 15).map(r => {
+      const at = when(r.time, { weekday: 'short', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+      const m = k => r.marks.find(x => x.key === k);
+      let text;
+      if (r.kind === 'brake') {
+        const b = m(headKey('brake'));
+        text = `${esc(t('Bremsung aus {v}', { v: speedText(r.v_start) }))} · ${b ? `${esc(perfLabel(b.key))} <b>${markValue(b)}</b> · ` : ''}` +
+               `${esc(t('gesamt'))} ${U.dst(r.dist_m).toFixed(1)} ${U.dist}`;
+      } else {
+        const keys = imperial ? ['0-60mph', '0-100mph', '1/4mi'] : ['0-100', '0-200', '1/4mi'];
+        const parts = keys.map(m).filter(Boolean).map(x => `${esc(perfLabel(x.key).replace(/ (km\/h|mph)$/, ''))} <b>${x.t.toFixed(2)} s</b>`);
+        text = `${parts.join(' · ')} · max. ${speedText(r.v_max)}`;
+      }
+      return `<div><span class="when">${esc(at)}</span><br>${text}</div>`;
+    }).join('') || `<span class="pempty">${esc(t('Noch keine Läufe.'))}</span>`);
+    drawSpeedChart();
+    drawDyno();
+  }
+
+  // Small line chart: one y axis from 0, hairline grid, optional crosshair at x = cursor
+  const niceMax = v => {
+    if (!(v > 0)) return 1;
+    const p = 10 ** Math.floor(Math.log10(v));
+    return [1, 1.2, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10].find(m => m * p >= v) * p;
+  };
+  const tickStep = (range, n) => {
+    const raw = range / Math.max(1, n), p = 10 ** Math.floor(Math.log10(raw)), m = raw / p;
+    return (m < 1.5 ? 1 : m < 3 ? 2 : m < 7 ? 5 : 10) * p;
+  };
+  function valueAt(pts, x) {
+    if (!pts.length || x < pts[0][0] || x > pts[pts.length - 1][0]) return null;
+    let i = 1;
+    while (i < pts.length - 1 && pts[i][0] < x) i++;
+    const [x0, y0] = pts[i - 1], [x1, y1] = pts[i];
+    return x1 === x0 ? y1 : y0 + (y1 - y0) * (x - x0) / (x1 - x0);
+  }
+  function plot(cv, o) {
+    const dpr = devicePixelRatio || 1, w = cv.clientWidth, h = cv.clientHeight;
+    if (!w || !h) return;
+    if (cv.width !== Math.round(w * dpr) || cv.height !== Math.round(h * dpr)) { cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr); }
+    const c = cv.getContext('2d');
+    c.setTransform(dpr, 0, 0, dpr, 0, 0);
+    c.clearRect(0, 0, w, h);
+    const L = 34, R = 12, T = 6, B = 16, pw = w - L - R, ph = h - T - B;
+    const X = x => L + (x - o.x0) / (o.x1 - o.x0) * pw, Y = y => T + (1 - y / o.y1) * ph;
+    c.font = '9px ui-monospace, monospace'; c.lineWidth = 1;
+    c.strokeStyle = '#1c1c21'; c.fillStyle = '#6b6b75';
+    c.textAlign = 'right'; c.textBaseline = 'middle';
+    const ys = tickStep(o.y1, Math.max(2, Math.floor(ph / 28)));
+    for (let i = 0, v = 0; v <= o.y1 + ys * 1e-6; v = ++i * ys) {
+      const y = Math.round(Y(v)) + .5;
+      c.beginPath(); c.moveTo(L, y); c.lineTo(w - R, y); c.stroke();
+      c.fillText(o.fy(v), L - 4, y);
+    }
+    c.textAlign = 'center'; c.textBaseline = 'alphabetic';
+    const xs = tickStep(o.x1 - o.x0, Math.max(2, Math.floor(pw / 55)));
+    const first = Math.ceil(o.x0 / xs - 1e-6);
+    for (let i = first, v = first * xs; v <= o.x1 + xs * 1e-6; v = ++i * xs) c.fillText(o.fx(+v.toFixed(6)), X(v), h - 3);
+    c.lineJoin = c.lineCap = 'round';
+    for (const s of o.series) {
+      c.strokeStyle = s.color; c.lineWidth = 2; c.setLineDash(s.dash || []);
+      c.beginPath();
+      let started = false;
+      for (const [x, y] of s.pts) {
+        if (x > o.x1) break;
+        started ? c.lineTo(X(x), Y(y)) : c.moveTo(X(x), Y(y));
+        started = true;
+      }
+      c.stroke();
+    }
+    c.setLineDash([]);
+    if (o.cursor != null && o.cursor >= o.x0 && o.cursor <= o.x1) {
+      const x = Math.round(X(o.cursor)) + .5;
+      c.strokeStyle = '#6b6b75'; c.beginPath(); c.moveTo(x, T); c.lineTo(x, T + ph); c.stroke();
+      for (const s of o.series) {
+        const v = valueAt(s.pts, o.cursor);
+        if (v == null) continue;
+        c.fillStyle = '#0b0b0d'; c.beginPath(); c.arc(X(o.cursor), Y(v), 6, 0, Math.PI * 2); c.fill();
+        c.fillStyle = s.color; c.beginPath(); c.arc(X(o.cursor), Y(v), 4, 0, Math.PI * 2); c.fill();
+      }
+    }
+    cv._inv = px => Math.max(o.x0, Math.min(o.x1, o.x0 + (px - L) / pw * (o.x1 - o.x0)));
+  }
+  const legendHtml = series => series.map(s => `<span><i class="${s.dash ? 'dash' : ''}" style="background:${s.color};color:${s.color}"></i>${esc(s.name)}</span>`).join('');
+  // Tap/drag sets the crosshair; it stays until the next tap
+  function chartCursor(cvs, set) {
+    for (const cv of cvs) {
+      const at = e => { const r = cv.getBoundingClientRect(); if (cv._inv) set(cv._inv(e.clientX - r.left)); };
+      cv.addEventListener('pointerdown', at);
+      cv.addEventListener('pointermove', e => { if (e.buttons || e.pointerType === 'mouse') at(e); });
+      cv.addEventListener('pointerleave', e => { if (e.pointerType === 'mouse') set(null); });
+    }
+  }
+  chartCursor([$('perfChart')], x => { perfCursor = x; drawSpeedChart(); });
+  chartCursor([$('dynoChart')], x => { dynoCursor = x; drawDyno(); });
+
+  function drawSpeedChart() {
+    if (page !== 4) return;
+    const P = perf || {}, series = [];
+    const trace = r => r.trace.map(p => [p[0], U.spd(p[1])]);
+    if (P.best_accel) series.push({ name: t('Bestlauf'), color: SERIES.best, dash: [5, 4], pts: trace(P.best_accel) });
+    if (P.last_accel) series.push({ name: P.best_accel ? t('Letzter Lauf') : t('Letzter Lauf = Bestlauf'), color: SERIES.last, pts: trace(P.last_accel) });
+    if (livePts.length > 1) series.push({ name: t('Live'), color: SERIES.live, pts: livePts.map(([x, v]) => [x, U.spd(v)]), live: true });
+    $('perfChartEmpty').hidden = series.length > 0;
+    $('perfChart').hidden = !series.length;
+    if (!series.length) { setHtml('perfLegend', ''); setText('perfRead', ''); return; }
+    // Show up to just after top speed, not the whole cruise at top speed
+    let x1 = 3, y1 = 0;
+    for (const s of series) {
+      const vmax = Math.max(...s.pts.map(p => p[1]));
+      const top = s.pts.find(p => p[1] >= vmax * 0.99);
+      x1 = Math.max(x1, (s.live ? s.pts[s.pts.length - 1][0] : top[0]) * 1.05);
+      y1 = Math.max(y1, vmax);
+    }
+    plot($('perfChart'), { x0: 0, x1, y1: niceMax(y1 * 1.02), fx: v => v + ' s', fy: v => String(Math.round(v)), series, cursor: perfCursor });
+    setHtml('perfLegend', legendHtml(series));
+    if (perfCursor == null) { setText('perfRead', t('Tippen zeigt die Werte')); return; }
+    const vals = series.map(s => [s, valueAt(s.pts, perfCursor)]).filter(([, v]) => v != null);
+    setText('perfRead', `${perfCursor.toFixed(2)} s: ` + vals.map(([s, v]) => `${s.name.split(' = ')[0]} ${Math.round(v)} ${U.speed}`).join(' · '));
+  }
+
+  // Best shift points and the power band (power and torque in % of their maximum: no weight needed)
+  function drawDyno() {
+    if (page !== 4) return;
+    const P = perf || {}, dy = P.dyno;
+    $('dynoEmpty').hidden = !!dy;
+    $('dynoBox').hidden = !dy;
+    if (!dy) { setHtml('shiftTable', ''); return; }
+    const shifts = dy.shifts || [];
+    setHtml('shiftTable', !shifts.length ? '' :
+      `<tr><td>${esc(t('Gang'))}</td><td class="v">${esc(t('optimal'))}</td><td class="x"></td><td class="w">${esc(t('gefahren'))}</td></tr>` +
+      shifts.map(s => {
+        const best = s.late ? `${esc(t('spät'))}` : `${Math.round(s.rpm)}`;
+        const at = s.late ? `${esc(t('bis'))} ${Math.round(dy.max_rpm)}` : speedText(s.kmh);
+        let drove = '–';
+        if (s.actual != null) {
+          const diff = s.actual - (s.late ? dy.max_rpm : s.rpm);
+          drove = `${Math.round(s.actual)}` + (Math.abs(diff) < 150 ? ' ✓' : ` <span class="${Math.abs(diff) >= 300 ? 'warn' : ''}">(${sgn(diff, 0)})</span>`);
+        }
+        return `<tr><td>${s.gear} → ${s.gear + 1}</td><td class="v">${best}</td><td class="x">${at}</td><td class="w">${drove}</td></tr>`;
+      }).join(''));
+    const pmax = Math.max(...dy.curve.map(c => c[1]));
+    const tq = dy.curve.map(([r, w]) => [r, w / r]);
+    const tmax = Math.max(...tq.map(c => c[1]));
+    const series = [
+      { name: t('Leistung'), color: SERIES.last, pts: dy.curve.map(([r, w]) => [r, w / pmax * 100]) },
+      { name: t('Drehmoment'), color: SERIES.torque, pts: tq.map(([r, v]) => [r, v / tmax * 100]) },
+    ];
+    const x0 = dy.curve[0][0], x1 = Math.max(dy.curve[dy.curve.length - 1][0], x0 + 500);
+    plot($('dynoChart'), { x0, x1, y1: 100, fx: v => (v / 1000).toFixed(v % 1000 ? 1 : 0) + 'k', fy: v => v + '%', series, cursor: dynoCursor });
+    setHtml('dynoLegend', legendHtml(series));
+    const peakT = tq.reduce((a, b) => b[1] > a[1] ? b : a);
+    setText('dynoPeakP', t('Max. Leistung bei {rpm}', { rpm: rpmText(dy.peak[0]) }));
+    setText('dynoPeakT', t('Max. Drehmoment bei {rpm}', { rpm: rpmText(peakT[0]) }));
+    // Power-to-weight at the wheels: W/kg → PS per tonne, or pounds per hp
+    const pw = imperial ? `${(2204.62 / (pmax * 1000 / 745.7)).toFixed(1)} lb/hp` : `${Math.round(pmax * 1000 / 735.5)} PS/t`;
+    setText('dynoPw', t('Leistungsgewicht am Rad: {v}', { v: pw }));
+    setText('dynoFrom', P.dyno_time ? t('Lauf vom {date}', { date: when(P.dyno_time, { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) }) : '');
+    if (dynoCursor == null) { setText('dynoRead', t('Tippen zeigt die Werte')); return; }
+    const vals = series.map(s => [s, valueAt(s.pts, dynoCursor)]).filter(([, v]) => v != null);
+    setText('dynoRead', `${rpmText(dynoCursor)}: ` + vals.map(([s, v]) => `${s.name} ${Math.round(v)} %`).join(' · '));
+  }
+  addEventListener('resize', () => { if (page === 4) { drawSpeedChart(); drawDyno(); } });
+  fetchPerf();
+
+  $('feed').dataset.empty = t('Noch kein Feedback.');
+  pollCoach();
+  setInterval(pollCoach, 5000);
+  showPage(page);
+
+  // ---------- WebSocket ----------
+  let pending = null, retry = 500;
+  function connect() {
+    const ws = new WebSocket(`ws://${location.host}/ws`);
+    ws.onopen = () => { retry = 500; };
+    ws.onmessage = e => {
+      const first = pending === null;
+      pending = e.data;
+      if (first) requestAnimationFrame(() => { const p = pending; pending = null; try { render(JSON.parse(p)); } catch (err) { console.error(err); } });
+    };
+    ws.onclose = () => {
+      render({ live: false });
+      setTimeout(connect, retry);
+      retry = Math.min(retry * 2, 5000);
+    };
+    ws.onerror = () => ws.close();
+  }
+  connect();
+})();
+</script>
+</body>
+</html>

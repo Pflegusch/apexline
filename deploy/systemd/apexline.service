@@ -1,0 +1,20 @@
+# Apexline as a systemd user service (Linux, Raspberry Pi).
+#   cargo install --path .                      # installs ~/.cargo/bin/apexline
+#   cp deploy/systemd/apexline.service ~/.config/systemd/user/
+#   systemctl --user daemon-reload && systemctl --user enable --now apexline
+#   loginctl enable-linger "$USER"              # start at boot, not only at login
+# Settings: ~/.config/apexline/config.toml, data: ~/.local/share/apexline (see `apexline config`).
+[Unit]
+Description=Apexline – telemetry dashboard and coach for GT7 (dashboard on port 8080)
+After=network-online.target
+Wants=network-online.target
+# No restart limit: the service waits, if need be, until port 8080/33740 is free
+StartLimitIntervalSec=0
+
+[Service]
+ExecStart=%h/.cargo/bin/apexline
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=default.target

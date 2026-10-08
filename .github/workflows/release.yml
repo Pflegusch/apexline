@@ -1,0 +1,82 @@
+name: Release
+
+# A version tag (v0.1.0) builds all programs and creates a draft release with them.
+# Changing this file builds them too (as artifacts only), so the workflow is tested before a release.
+on:
+  push:
+    # Tags always build (path filters don't apply to tags); main only when this file changes
+    tags: ["v*"]
+    branches: [main]
+    paths: [".github/workflows/release.yml"]
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Linux builds are static (musl): one file that runs on any distribution and Raspberry Pi OS
+          - { name: linux-x86_64, os: ubuntu-latest, target: x86_64-unknown-linux-musl }
+          - { name: linux-arm64, os: ubuntu-24.04-arm, target: aarch64-unknown-linux-musl }
+          - { name: windows-x86_64, os: windows-latest, target: x86_64-pc-windows-msvc }
+          - { name: macos-arm64, os: macos-latest, target: aarch64-apple-darwin }
+          - { name: macos-x86_64, os: macos-latest, target: x86_64-apple-darwin }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - if: contains(matrix.target, 'musl')
+        run: sudo apt-get update && sudo apt-get install -y musl-tools
+      - run: cargo build --release --locked --target ${{ matrix.target }}
+      - name: Package
+        shell: bash
+        run: |
+          version=dev
+          [[ "$GITHUB_REF_TYPE" == tag ]] && version="$GITHUB_REF_NAME"
+          dir="apexline-${version}-${{ matrix.name }}"
+          mkdir "$dir"
+          bin=apexline
+          [[ "${{ matrix.target }}" == *windows* ]] && bin=apexline.exe
+          cp "target/${{ matrix.target }}/release/$bin" "$dir/"
+          for f in README.md README.de.md LICENSE-MIT LICENSE-APACHE CHANGELOG.md; do
+            [[ -f "$f" ]] && cp "$f" "$dir/"
+          done
+          if [[ "${{ matrix.target }}" == *windows* ]]; then
+            7z a "$dir.zip" "$dir" > /dev/null
+            echo "ASSET=$dir.zip" >> "$GITHUB_ENV"
+          else
+            tar czf "$dir.tar.gz" "$dir"
+            echo "ASSET=$dir.tar.gz" >> "$GITHUB_ENV"
+          fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.name }}
+          path: ${{ env.ASSET }}
+
+  release:
+    if: github.ref_type == 'tag'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      # Release text: the section of this version in CHANGELOG.md
+      - run: awk -v v="${GITHUB_REF_NAME#v}" '/^## /{p = index($0, "## " v " ") == 1; next} p' CHANGELOG.md > notes.md
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - run: cd dist && sha256sum * > SHA256SUMS.txt
+      - uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          body_path: notes.md
+          files: dist/*
